@@ -1,2 +1,6 @@
+name = "master_thesis"
+authors = ["masenka31"]
+[compat]
+julia = "1.6.4"
 [deps]
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
