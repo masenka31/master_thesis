@@ -1,6 +1,26 @@
 name = "master_thesis"
 authors = ["masenka31"]
-[compat]
-julia = "1.6.4"
+
 [deps]
+BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+ClusterLosses = "33103f26-f673-4add-b1b0-418ff5de9e40"
+Clustering = "aaaa29a8-35af-508c-8bc3-b662a17a0fe5"
+ConditionalDists = "c648c4dd-c1e0-49a6-84b9-144ae7fd2468"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DistributionsAD = "ced4e74d-a319-5a8a-b0ac-84af2272839c"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
+Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
+IterTools = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
+Mill = "1d0525e4-8992-11e8-313c-e310e1f6ddea"
+PlotlyJS = "f0f68f2c-4968-5e81-91da-67840de0976a"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+UMAP = "c4f8c510-2410-5be4-91d7-4fbaeb39457e"
+
+[compat]
+ChainRulesCore = ">=1.12.0"
+Mill = "2.6.0"
+julia = "1.6.4"
