@@ -1,15 +1,35 @@
+using DrWatson
+using master_thesis
+using Distributions, DistributionsAD
+using ConditionalDists
+using Flux
+
+using StatsBase
+using LinearAlgebra
+using Distances
+using Base.Iterators: repeated
+
+using Plots
+gr(markerstrokewidth=0, color=:jet, label="");
+
 using Mill
 include(srcdir("toy", "moons.jl"))
-gr(markerstrokewidth=0, color=:jet);
 
 # get moons array data
 n = 10
-data, y, lnum = generate_moons_data(n, 300; λ=50, gap=1, max_val = 10)
+data, y, lnum = generate_moons_data(n, 600; λ=50, gap=1, max_val = 10)
 X = hcat(data...)
-scatter2(X, color=lnum,aspect_ratio=:equal, ms=2.5)
+scatter2(X, zcolor=lnum,aspect_ratio=:equal, ms=2.5)
+
+# choice of bags
+ix = map(i -> findfirst(x -> x == i, y), 1:n)
+scatter2(data[ix[1]], color=1)
+for i in 2:10 scatter2!(data[i], color=i) end
+plot!(aspect_ratio=:equal, size=(800,800))
 
 # create mill data
 mill_data = BagNode(ArrayNode(hcat(data...)), get_obs(data))
+project_data(X::AbstractBagNode) = Mill.data(Mill.data(X))
 
 ##################################################
 ###                 Classifier                 ###
@@ -17,6 +37,12 @@ mill_data = BagNode(ArrayNode(hcat(data...)), get_obs(data))
 
 # split known data to train/test
 Xk, yk, Xu, yu, Xt, yt = split_semisupervised_data(mill_data, y, ratios=(0.1, 0.4, 0.5))
+while length(countmap(yk)) < n
+    Xk, yk, Xu, yu, Xt, yt = split_semisupervised_data(mill_data, y, ratios=(0.1, 0.4, 0.5))
+end
+
+# split balanced
+Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(mill_data, y, ratios=(0.1, 0.4, 0.5))
 
 # and encode labels to onehot
 Xtrain = Xk
@@ -38,7 +64,7 @@ accuracy(x, y) = round(mean(collect(1:n)[Flux.onecold(model(x))] .== y), digits=
 using IterTools
 using Flux: @epochs
 
-@epochs 100 begin
+@epochs 1000 begin
     Flux.train!(loss, Flux.params(model), repeated((Xtrain, yoh_train), 5), opt)
     @show loss(Xtrain, yoh_train)
     @show accuracy(Xtrain, ytrain)
@@ -46,54 +72,48 @@ using Flux: @epochs
 end
 
 # look at the created latent space
-XX, yy = Xtrain, ytrain
-latent = model[1:end-1](XX)
-Xtdata = XX.data.data
-ytdata = mapreduce((y, i) -> repeat([y], i), vcat, yy, length.(XX.bags))
-scatter2(Xtdata, zcolor=ytdata)
-scatter2(latent, zcolor=yy)
+scatter2(model[1:end-1](Xk), zcolor=yk)
+scatter2!(model[1:end-1](Xu), zcolor=yu, opacity=0.5, marker=:square)
+scatter2!(model[1:end-1](Xt), zcolor=yt, marker=:star)
 
 #######################################################
 ###                 Semi-supervised                 ###
 #######################################################
+
+include(scriptsdir("conditional_losses.jl"))
+include(scriptsdir("conditional_bag_losses.jl"))
 
 # mill model to get one-vector bag representation
 bagmodel = Chain(reflectinmodel(
     Xk,
     d -> Dense(d, 2),
     SegmentedMeanMax
-), Mill.data, softmax)
-
-project_data(X::AbstractBagNode) = Mill.data(Mill.data(X))
+), Mill.data)
 
 # parameters
 c = n       # number of classes
-dz = 2      # latent dimension
+zdim = 2      # latent dimension
 xdim = 2    # input dimension
 
 # latent prior - isotropic gaussian
-pz = MvNormal(zeros(dz), 1)
-
+pz = MvNormal(zeros(Float32, zdim), 1f0)    # check that eltype is Float32
 # categorical prior
-α = softmax(randn(c))   # α is a trainable parameter!
-py = Categorical(α)
+α = softmax(Float32.(randn(c)))             # α is a trainable parameter!
 
-# posterior on latent (known labels)
-μ_qz_xy = Chain(Dense(xdim+c,2,swish), Dense(2,dz))
-σ_qz_xy = Chain(Dense(xdim,2,swish), Dense(2,dz,softplus))
-qz_xy(x) = DistributionsAD.TuringDiagMvNormal(μ_qz_xy(x), σ_qz_xy(x[1:xdim]))
-
-# posterior on y (needs the bag aggregation)
+# categorical approximate
 α_qy_x = Chain(Dense(2,2,swish), Dense(2,c),softmax)
-qy_x(B) = Categorical(α_qy_x(bagmodel(B)[:]))
+qy_x = ConditionalCategorical(α_qy_x)
 
-# posterior on x
-μ_px_yz = Chain(Dense(xdim+c,2,swish), Dense(2,xdim))
-σ_px_yz = Chain(Dense(xdim+c,2,swish), Dense(2,xdim,softplus))
-px_yz(x) = DistributionsAD.TuringDiagMvNormal(μ_px_yz(x), σ_px_yz(x))
+# encoder
+net_xz = Chain(Dense(xdim+c,4,swish), Dense(4, 4, swish), SplitLayer(4, [zdim,zdim], [identity, safe_softplus]))
+qz_xy = ConditionalMvNormal(net_xz)
+
+# decoder
+net_zx = Chain(Dense(zdim+c,4,swish), Dense(4, 4, swish), SplitLayer(4, [xdim,xdim], [identity, safe_softplus]))
+px_yz = ConditionalMvNormal(net_zx)
 
 # parameters and opt
-ps = Flux.params(α, μ_qz_xy, σ_qz_xy, α_qy_x, μ_px_yz, σ_px_yz, bagmodel)
+ps = Flux.params(α, qz_xy, qy_x, px_yz, bagmodel)
 opt = ADAM()
 
 # minibatch function for bags
@@ -101,31 +121,104 @@ function minibatch(Xk, y, Xu;ksize=64, usize=64)
     kix = sample(1:nobs(Xk), ksize)
     uix = sample(1:nobs(Xu), usize)
 
-    xk, yk = [Xk[i] for i in kix], y[kix]
-    xu = [Xu[i] for i in uix]
+    xk, yk = Xk[kix], y[kix]
+    xu = Xu[uix]
+
+    return xk, yk, xu
+end
+function minibatch(Xk, y, Xu;ksize=64, usize=64)
+    if ksize > length(y)
+        xk, yk = [Xk[i] for i in 1:nobs(Xk)], y
+    else
+        kix = sample(1:nobs(Xk), ksize, replace=false)
+        xk, yk = [Xk[i] for i in kix], y[kix]
+    end
+
+    if usize > nobs(Xu)
+        xu = [Xu[i] for i in 1:nobs(Xu)]
+    else    
+        uix = sample(1:nobs(Xu), usize, replace=false)
+        xu = [Xu[i] for i in uix]
+    end
 
     return xk, yk, xu
 end
 
 function accuracy(X, y, c)
     N = length(y)
-    ynew = map(i -> Flux.onecold(qy_x(X[i]).p, 1:c), 1:nobs(X))
+    ynew = Flux.onecold(probs(condition(qy_x, bagmodel(X))), 1:c)
     sum(ynew .== y)/N
 end
 accuracy(X, y) = accuracy(X, y, c)
 
-# semisupervised loss stays the same
-ksize, usize = 64, 64
-loss(xk, yk, xu) = semisupervised_loss(xk, yk, xu, ksize)
+function semisupervised_loss(xk, y, xu, N)
+    # known and unknown losses
+    l_known = loss_known_mill(xk, y)
+    l_unknown = loss_unknown_mill(xu)
 
-for i in 1:20
-    b = minibatch(Xk, yk, Xu; ksize=ksize, usize=usize);
-    Flux.train!(loss, ps, zip(b...), opt)
-    @show i
-    a = round(accuracy(Xk, yk), digits=4)
-    @show a
-    @show loss(b[1][1], b[2][1], b[3][1])
+    # classification loss on known data
+    lc = 0.1 * N * loss_classification_mill(xk, y)
+
+    return l_known + l_unknown + lc
+end
+function semisupervised_loss(xk, y, xu, N)
+    # known and unknown losses
+    l_known = loss_known_bag(xk, y)
+    l_unknown = loss_unknown(xu)
+
+    # classification loss on known data
+    lc = 0.1 * N * loss_classification(xk, y)
+
+    return l_known + l_unknown + lc
 end
 
-r = mapreduce(i -> qy_x(Xt[i]).p, hcat, 1:nobs(Xt))
-bar(r[1,:], color=Int.(yt), size=(1000,400))
+ksize, usize = 64, 64
+loss(xk, yk, xu) = semisupervised_loss(xk, yk, xu, ksize*1.5)
+test_batch = minibatch(Xk, yk, Xu)
+
+for i in 1:50
+    for k in 1:2
+        b = minibatch(Xk, yk, Xu; ksize=ksize, usize=usize);
+        Flux.train!(loss, ps, zip((b...)), opt)
+    end
+    @show i
+    atr = round(accuracy(Xk, yk), digits=4)
+    ats = round(accuracy(Xt, yt), digits=4)
+    @info "Train accuracy: $atr"
+    @info "Test accuracy: $ats"
+    @show loss(test_batch[1][1], test_batch[2][1], test_batch[3][1])
+end
+
+r = probs(condition(qy_x, bagmodel(Xk)))
+i = 0
+i += 1;bar(r[i,:], color=Int.(yk), size=(1000,400), ylims=(0,1))
+
+
+latent = bagmodel(Xk)
+scatter2(latent, zcolor=yk, ms=7)
+latent_unknown = bagmodel(Xu)
+scatter2!(latent_unknown, zcolor=yu, opacity=0.6, marker=:square, ms=2)
+latent_test = bagmodel(Xt)
+scatter2!(latent_test, zcolor=yt, marker=:star)
+
+scatter2(reconstruct_mean(Xk[1], yk[1]), color=:blue)
+scatter2!(reconstruct_mean(Xk[2], yk[2]), color=:green)
+scatter2!(reconstruct_mean(Xk[3], yk[3]), color=:red)
+
+scatter2!(project_data(Xk[1]), color=:blue, marker=:square)
+scatter2!(project_data(Xk[2]), color=:green, marker=:square)
+scatter2!(project_data(Xk[3]), color=:red, marker=:square)
+plot!(aspect_ratio=:equal)
+
+r = condition(qy_x, bagmodel(Xk)).α
+bar(r[10, :], color=Int.(yk), ylims=(0,1))
+
+scatter2(project_data(Xk[1]), color=:blue, marker=:square, opacity=0.5)
+scatter2!(project_data(Xk[2]), color=:green, marker=:square, opacity=0.5)
+scatter2!(project_data(Xk[3]), color=:red, marker=:square, opacity=0.5)
+
+scatter2!(reconstruct_rand(Xk[1], yk[1]), color=:blue, ms=6)
+scatter2!(reconstruct_rand(Xk[2], yk[2]), color=:green, ms=6)
+scatter2!(reconstruct_rand(Xk[3], yk[3]), color=:red, ms=6)
+
+plot!(aspect_ratio=:equal)

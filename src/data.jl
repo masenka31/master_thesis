@@ -40,7 +40,29 @@ function train_test_split(X::AbstractMillNode, y::Vector; ratio=0.5, seed=nothin
     return (Xtrain, ytrain), (Xtest, ytest)
 end
 
-function split_semisupervised_data(X::AbstractMillNode, y::Vector; ratios=(0.3,0.3,0.4), seed=nothing)
+"""
+	seqids2bags(bagids)
+
+"""
+function seqids2bags(bagids)
+	c = countmap(bagids)
+	Mill.length2bags([c[i] for i in sort(collect(keys(c)))])
+end
+
+"""
+	reindex(bagnode, inds)
+
+A faster implementation of Base.getindex.
+"""
+function reindex(bagnode, inds)
+	obs_inds = bagnode.bags[inds]
+	new_bagids = vcat(map(x->repeat([x[1]], length(x[2])), enumerate(obs_inds))...)
+	data = bagnode.data.data[:,vcat(obs_inds...)]
+	new_bags = seqids2bags(new_bagids)
+	BagNode(ArrayNode(data), new_bags)
+end
+
+function split_semisupervised(X::AbstractMillNode, y::Vector; ratios=(0.3,0.3,0.4), seed=nothing)
     
     # set seed
     (seed == nothing) ? nothing : Random.seed!(seed)
@@ -49,8 +71,46 @@ function split_semisupervised_data(X::AbstractMillNode, y::Vector; ratios=(0.3,0
     ix = sample(1:n, n, replace=false)
     nk, nu, nt = round.(Int, n .* ratios)
 
-    Xk, Xu, Xt = X[ix[1:nk]], X[ix[nk+1:nk+nu]], X[ix[nk+nu+1:n]]
+    Xk, Xu, Xt = reindex(X, ix[1:nk]), reindex(X, ix[nk+1:nk+nu]), reindex(X, ix[nk+nu+1:n])
     yk, yu, yt = y[ix[1:nk]], y[ix[nk+1:nk+nu]], y[ix[nk+nu+1:n]]
+
+    # reset seed
+	(seed !== nothing) ? Random.seed!() : nothing
+
+    return Xk, yk, Xu, yu, Xt, yt
+end
+
+function split_semisupervised_balanced(X::AbstractMillNode, y::Vector; ratios=(0.3,0.3,0.4), seed=nothing)
+    
+    # set seed
+    (seed == nothing) ? nothing : Random.seed!(seed)
+
+    n = length(y)
+    un = unique(y)
+    c = length(un)
+
+    # create balanced classes
+    nk, nu, nt = round.(Int, n .* ratios)
+    r = round(Int, nk / c)
+    nk = r * c
+
+    ik = []
+    for i in 1:c
+        avail_ix = (1:n)[y .== un[i]]
+        ix = sample(avail_ix, r)
+        push!(ik, ix)
+    end
+    ik = shuffle(vcat(ik...))
+
+    ix_left = setdiff(1:n, ik)
+    ix = sample(ix_left, length(ix_left), replace=false)      # sample can be fixed by seed :)
+    
+    iu, it = ix[1:nu], ix[nu+1:end]
+
+    # Xk, Xu, Xt = reindex(X, ix[1:nk]), reindex(X, ix[nk+1:nk+nu]), reindex(X, ix[nk+nu+1:n])
+    Xk, Xu, Xt = reindex(X, ik), reindex(X, iu), reindex(X, it)
+    # yk, yu, yt = y[ix[1:nk]], y[ix[nk+1:nk+nu]], y[ix[nk+nu+1:n]]
+    yk, yu, yt = y[ik], y[iu], y[it]
 
     # reset seed
 	(seed !== nothing) ? Random.seed!() : nothing

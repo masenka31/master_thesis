@@ -18,5 +18,8 @@ export train_test_split
 export scatter2, scatter2!, scatter3, scatter3!
 export millnet_constructor
 export kl_divergence
+export safe_softplus
+export split_semisupervised_data
+export split_semisupervised_balanced
 
 end # module
