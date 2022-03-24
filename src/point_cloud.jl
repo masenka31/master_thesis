@@ -80,7 +80,7 @@ function load_mnist_point_cloud(;anomaly_class_ind::Int=1, noise=true, normalize
 
 	# add uniform noise to dequantize data
 	if noise
-		data = data .+ rand(size(data)...)
+		data = data .+ rand(Float32, size(data)...)
 	end
 	
 	# choose anomaly class
@@ -143,7 +143,7 @@ function load_mnist_point_cloud(;noise=true, normalize=true)
 	obs = seqids2bags(bagids)
 
 	# return normal and anomalous bags (and their labels)
-	(data = BagNode(ArrayNode(data), obs), bag_labels = bag_labels, labels = labels)
+	(data = BagNode(ArrayNode(Float32.(data)), obs), bag_labels = bag_labels, labels = labels)
 end
 
 using Statistics

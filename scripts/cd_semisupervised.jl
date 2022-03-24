@@ -94,14 +94,14 @@ ksize, usize = 64, 64
 loss(xk, y, xu) = semisupervised_loss(xk, y, xu, 64)
 
 using Flux: @epochs
-@epochs 2000 begin
+@epochs 1000 begin
     batch = minibatch(Xk, yk, Xu; ksize=ksize, usize=usize)
     Flux.train!(loss, ps, repeated(batch, 1), opt)
     a = round(accuracy(Xt, yt), digits=4)
     @show a
 end
 
-anim = @animate for i in 1:300
+anim = @animate for i in 1:1000
     space_plot()
     batch = minibatch(Xk, yk, Xu; ksize=ksize, usize=usize)
     Flux.train!(loss, ps, repeated(batch, 1), opt)
@@ -114,7 +114,8 @@ gif(anim, "animation.gif", fps = 15)
 space_plot()
 
 r = mapreduce(xi -> probs(condition(qy_x, xi)), hcat, eachcol(Xt))
-bar(r[1,:], color=Int.(yt), size=(1000,400))
+i = 0
+i += 1; bar(r[i,:], color=Int.(yt), size=(1000,400))
 
 function sample_new(y)
     yoh = Flux.onehotbatch(y, 1:c)
@@ -139,10 +140,10 @@ function reconstruct(x, y)
     rand(condition(px_yz, yz))
 end
 
-scatter2(sample_new(1, 100))
-scatter2!(sample_new(2, 100))
-scatter2!(sample_new(3, 100))
-scatter2!(X)
+scatter2(sample_new(1, 100), color=:green)
+scatter2!(sample_new(2, 100), color=:blue)
+scatter2!(sample_new(3, 100), color=:red)
+scatter2!(X, color=:yellow)
 
 scatter2(reconstruct(X, y), color=Int.(y));
 scatter2!(X, color=4, opacity=0.6)
