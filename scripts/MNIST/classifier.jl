@@ -1,0 +1,97 @@
+using DrWatson
+@quickactivate
+using master_thesis
+using Distributions, DistributionsAD
+using ConditionalDists
+using Flux
+
+using StatsBase, Random
+using LinearAlgebra
+using Distances
+using Base.Iterators: repeated
+
+using Plots
+gr(markerstrokewidth=0, color=:jet, label="");
+
+using Mill
+
+using master_thesis: reindex, seqids2bags
+using master_thesis: encode
+include(srcdir("point_cloud.jl"))
+project_data(X::AbstractBagNode) = Mill.data(Mill.data(X))
+
+data = load_mnist_point_cloud()
+ratios = (0.01, 0.49, 0.5)
+Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(data.data, data.bag_labels; ratios=ratios)
+length(yk)
+countmap(yk)
+classes = sort(unique(yk))
+n = c = length(classes)
+
+##################################################
+###                 Classifier                 ###
+##################################################
+
+# and encode labels to onehot
+Xtrain = Xk
+ytrain = yk
+yoh_train = Flux.onehotbatch(ytrain, classes)
+hdim = 16
+
+# create a simple classificator model
+mill_model = reflectinmodel(
+    Xtrain,
+    d -> Dense(d, hdim, swish),
+    SegmentedMeanMax
+)
+model = Chain(
+        mill_model, Mill.data,
+        Dense(hdim, hdim, swish), Dense(hdim, hdim, swish),
+        Dense(hdim, 2), Dense(2, n)
+)
+
+# training parameters, loss etc.
+opt = ADAM()
+loss(x, y) = Flux.logitcrossentropy(model(x), y)
+accuracy(x, y) = round(mean(classes[Flux.onecold(model(x))] .== y), digits=3)
+
+using IterTools
+using Flux: @epochs
+
+function minibatch(;batchsize=64)
+    ix = sample(1:nobs(Xk), batchsize)
+    xb = reindex(Xk, ix)
+    yb = yoh_train[:, ix]
+    xb, yb
+end
+
+@epochs 100 begin
+    for i in 1:10
+        batch = minibatch()
+        Flux.train!(loss, Flux.params(model), repeated(batch, 2), opt)
+        @show loss(batch...)
+    end
+    @show accuracy(Xtrain, ytrain)
+end
+
+# look at the created latent space
+scatter2(model[1:end-1](Xk), zcolor=yk)
+scatter2(model[1:end-1](Xu), zcolor=yu, opacity=0.5, marker=:square, markersize=2)
+scatter2(model[1:end-1](Xt), zcolor=yt, marker=:star)
+
+scatter2(model[1:end-1](Xu), zcolor=yu, marker=:square, markersize=2)
+
+i = 0
+xh = -40:0.5:70
+yh = -60:0.5:50
+i += 1; heatmap(xh, yh, (x, y) -> softmax(model[end](vcat(x, y)))[i])
+
+p = plot(layout=(2,5), legend=false, axis=([], false), size=(1000, 600));
+for i in 1:10
+    p = heatmap!(xh, yh, (x, y) -> softmax(model[end](vcat(x, y)))[i],
+    subplot=i, legend=:none, title="no. $i", titlefontsize=8)
+end
+p
+
+accuracy(Xk, yk)
+accuracy(Xt, yt)
