@@ -10,13 +10,13 @@ function minibatch(Xk, y, Xu;ksize=64, usize=64)
 
     return xk, yk, xu
 end
-function minibatch_uniform(Xk, y, Xu;ksize=64, usize=64)
+function minibatch_uniform()
     k = round(Int, ksize / c)
     n = nobs(Xk)
 
     ik = []
     for i in 1:c
-        avail_ix = (1:n)[y .== classes[i]]
+        avail_ix = (1:n)[yk .== classes[i]]
         ix = sample(avail_ix, k)
         push!(ik, ix)
     end
@@ -24,9 +24,9 @@ function minibatch_uniform(Xk, y, Xu;ksize=64, usize=64)
 
     uix = sample(1:nobs(Xu), usize)
 
-    ye = encode(y, classes)
-    xk, yk = [Xk[i] for i in kix], ye[kix]
+    ye = encode(yk, classes)
+    xk, y = [Xk[i] for i in kix], ye[kix]
     xu = [Xu[i] for i in uix]
 
-    return xk, yk, xu
+    return xk, y, xu
 end

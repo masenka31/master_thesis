@@ -32,9 +32,11 @@ countmap(yk)
 classes = sort(unique(yk))
 n = c = length(classes)
 
-##################################################
-###                 Classifier                 ###
-##################################################
+##############################################################################
+###                 Classifier with Triplet regularization                 ###
+##############################################################################
+
+using ClusterLosses
 
 # and encode labels to onehot
 Xtrain = Xk
@@ -56,9 +58,19 @@ model = Chain(
 )
 
 # training parameters, loss etc.
-opt = ADAM()
-loss(x, y) = Flux.logitcrossentropy(model(x), y)
+margin = 1f0
+α = 5f0
+
+function loss_reg(x, yoh, y)
+    ce = Flux.logitcrossentropy(model(x), yoh)
+    enc = model[1:end-1](x)
+    trl = ClusterLosses.loss(Triplet(margin), SqEuclidean(), enc, y)
+
+    return ce + trl
+end
+
 accuracy(x, y) = round(mean(classes[Flux.onecold(model(x))] .== y), digits=3)
+opt = ADAM()
 
 using IterTools
 using Flux: @epochs
@@ -67,13 +79,14 @@ function minibatch(;batchsize=64)
     ix = sample(1:nobs(Xk), batchsize)
     xb = reindex(Xk, ix)
     yb = yoh_train[:, ix]
-    xb, yb
+    yl = ytrain[ix]
+    xb, yb, yl
 end
 
 @epochs 100 begin
     batches = map(_ -> minibatch(), 1:10)
-    Flux.train!(loss, Flux.params(model), batches, opt)
-    @show loss(batches[1]...)
+    Flux.train!(loss_reg, Flux.params(model), batches, opt)
+    @show loss_reg(batches[1]...)
     @show accuracy(Xtrain, ytrain)
 end
 

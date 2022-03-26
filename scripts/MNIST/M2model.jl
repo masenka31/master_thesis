@@ -41,10 +41,10 @@ include(scriptsdir("conditional_losses.jl"))
 include(scriptsdir("conditional_bag_losses.jl"))
 
 # parameters
-zdim = 2
+zdim = 16
 xdim = 3
 hdim = 32
-bdim = 2
+bdim = 3
 
 # mill model to get one-vector bag representation
 bagmodel = Chain(reflectinmodel(
@@ -85,8 +85,10 @@ accuracy(X, y) = accuracy(X, y, classes)
 NN = mean(length.(Xk.bags))
 function semisupervised_loss(xk, y, xu, N)
     # known and unknown losses
-    l_known = Float32(NN) * loss_known_bag(xk, y)
-    l_unknown = loss_unknown_bag(xu)
+    # l_known = Float32(NN) * loss_known_bag(xk, y)
+    l_known = loss_known_bag(xk, y)
+    # l_unknown = loss_unknown_bag(xu)
+    l_unknown = loss_unknown(xu)
 
     # classification loss on known data
     lc = N * loss_classification(xk, y)
@@ -117,26 +119,39 @@ end
 
 ksize, usize = 60,60
 loss(xk, yk, xu) = semisupervised_loss(xk, yk, xu, ksize)
-loss(xk, yk, xu) = semisupervised_loss(xk, yk, xu, 100)
+loss(xk, yk, xu) = semisupervised_loss(xk, yk, xu, nobs(Xk))
 tr_batch = minibatch_uniform();
 
-anim = @animate for i in 1:100
-    # plot_heatmap()
+best_model = deepcopy.([α, qz_xy, qy_x, px_yz])
+best_acc = 0
 
-    b = map(_ -> minibatch_uniform(), 1:2)
-    Flux.train!(loss, ps, b, opt)
+anim = @animate for i in 1:1000
+    # plot_heatmap()
+    # enc = bagmodel(Xk)
+    # scatter3(enc, zcolor=yk, ms=4, xlims=(-10,10), ylims=(-10, 10), zlims=(-10, 10))
+
+    # b = map(_ -> minibatch_uniform(), 1:1)
+    b = minibatch_uniform()
+    Flux.train!(loss, ps, zip(b...), opt)
 
     @info "Epoch $i"
-    @show loss(tr_batch...)
+    # @show loss(tr_batch...)
+    @show mean(loss.(tr_batch...))
     a = accuracy(Xk, yk)
     @info "Accuracy = $a."
+
+    if a >= best_acc
+        @info "Accuracy improved."
+        global best_acc = a
+        global best_model = deepcopy.([α, qz_xy, qy_x, px_yz])
+    end
 end
-gif(anim, "animation_crossentropy900.gif", fps = 10)
+gif(anim, "latent_space_previousM2.gif", fps = 20)
 
 # probabilities
 r = probs(condition(qy_x, bagmodel(Xk)))
 i = 0
-i += 1;bar(r[i,1:100], color=Int.(yk[1:100]), size=(1000,400), ylims=(0,1), label="$(i-1)")
+i += 1;bar(r[i,1:100], color=Int.(yk[1:100]), size=(1000,400), ylims=(0,1), label="$(classes[i])")
 
 r = probs(condition(qy_x, bagmodel(Xu)))
 i = 0
@@ -179,6 +194,16 @@ function plot_heatmap()
     end
     p
 end
+function plot_heatmap3()
+    p = plot(layout=(1,3), legend=false, axis=([], false));
+    for i in 1:3
+        p = heatmap!(
+            xh, yh, (x, y) -> probs(condition(qy_x, vcat(x, y)))[i], subplot=i,
+            legend=:none, title="no. $(classes[i])", titlefontsize=7, size=(1000, 600)
+        )
+    end
+    p
+end
 
 function reconstruct(Xb, y)
 
@@ -204,17 +229,35 @@ i += 1; scatter2(project_data(Xk[i]), aspect_ratio=:equal, ms=(project_data(Xk[i
 
 i+=1; plot_number(i); scatter2!(reconstruct(Xk[i], yk[i] + 1), ms=reconstruct(Xk[i], yk[i] + 1)[3, :] .+ 3 .* 2, color=:green)
 
-pvec = []
 k = sample(1:200)
+pvec = []
 for i in k:k+8
-    #p_i = plot_number(i)
+    p_i = plot_number(i)
     yi = encode([yk[i]], classes)[1]
     R = reconstruct(Xk[i], yi)
     r = classes[Flux.onecold(condition(qy_x, bagmodel(Xk[i])).α)][1]
-    p_i = scatter2(
+    p_i = scatter2!(
         R, ms=R[3, :] .+ 3 .* 2,
         color=:green, axis=([], false), xlims=(-3,3), ylims=(-3, 3), size=(900, 900),
         title="predicted: $r\ntrue: $(yk[i])", titlefontsize=8
+    )
+    push!(pvec, p_i)
+end
+plot(pvec..., layout=(3,3), size=(900,900))
+
+plot_number(i) = scatter2(project_data(Xt[i]), aspect_ratio=:equal, ms=(project_data(Xk[i])[3, :] .+ 3) .* 2, size=(400, 400), marker=:square)
+
+k = sample(1:200)
+pvec = []
+for i in k:k+8
+    # p_i = plot_number(i)
+    yi = encode([yt[i]], classes)[1]
+    R = reconstruct(Xt[i], yi)
+    r = classes[Flux.onecold(condition(qy_x, bagmodel(Xt[i])).α)][1]
+    p_i = scatter2(
+        R, ms=R[3, :] .+ 3 .* 2,
+        color=:green, axis=([], false), xlims=(-3,3), ylims=(-3, 3), size=(900, 900),
+        title="predicted: $r\ntrue: $(yt[i])", titlefontsize=8
     )
     push!(pvec, p_i)
 end
