@@ -5,7 +5,13 @@
 
 Get the absolute path of the MNIST point cloud dataset. Equals to `datadir("mnist_point_cloud")`.
 """
-get_mnist_point_cloud_datapath() = datadir("mnist_point_cloud")
+function get_mnist_point_cloud_datapath()
+	if occursin("maskomic", pwd())
+		return "/home/maskomic/projects/GroupAD.jl/data/mnist_point_cloud"
+	else
+		return datadir("mnist_point_cloud")
+	end
+end
 
 """
 	process_raw_mnist_point_cloud()

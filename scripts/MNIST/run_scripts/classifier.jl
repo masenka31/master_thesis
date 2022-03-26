@@ -33,12 +33,12 @@ end
 data = load_mnist_point_cloud()
 
 if full
-    Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(data.data, data.bag_labels; ratios=ratios)
+    Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(data.data, data.bag_labels; ratios=ratios, seed=seed)
 else
     # hardcode to only get 4 predefined numbers
     b = map(x -> any(x .== [0,1,3,4]), data.bag_labels)
     filt_data, filt_labels = reindex(data.data, b), data.bag_labels[b]
-    Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(filt_data, filt_labels; ratios=ratios)
+    Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(filt_data, filt_labels; ratios=ratios, seed=seed)
 end
 
 # global parameters
@@ -47,6 +47,7 @@ n = c = length(classes)
 
 # model parameters
 hdim, ldim, batchsize, agg = sample_params()
+parameters = (hdim = hdim, ldim = ldim, batchsize = batchsize, agg = agg)
 
 # prepare data
 Xtrain = Xk
@@ -129,8 +130,6 @@ end
 ####################
 ### Save results ###
 ####################
-
-parameters = (hdim = hdim, ldim = ldim, batchsize = batchsize, agg = agg)
 
 # accuracy results
 train_acc = accuracy(Xk, yk)      # known labels

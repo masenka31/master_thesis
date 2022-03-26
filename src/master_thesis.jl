@@ -25,8 +25,3 @@ export split_semisupervised_balanced
 export confusion_matrix
 
 end # module
-
-ratios = (0.002, 0.498, 0.5)
-ratios = (0.01, 0.49, 0.5)
-ratios = (0.05, 0.45, 0.5)
-
