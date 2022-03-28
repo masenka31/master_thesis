@@ -9,24 +9,18 @@ if [ ! -d "$LOG_DIR" ]; then
 	mkdir $LOG_DIR
 fi
 
-# submit 10 experiments to slurm
+# submit n experiments to slurm
 # with all arguments
-for n in {1..3}
+for n in {1..50}
 do
-    for seed in {1..5}
+    for ratios in 0.002 0.01 0.05
     do
-        for ratios in 0.002 0.01 0.05
+        for full in 1
         do
-            for activation in swish relu
-            do
-                for full in 0 1
-                do
-                    # submit to slurm
-                    sbatch \
-                    --output="${LOG_DIR}/${n}_%A_%a.out" \
-                    ./${SCRIPT}.sh $seed $ratios $activation $full
-                done
-            done
+            # submit to slurm
+            sbatch \
+            --output="${LOG_DIR}/${n}_%A_%a.out" \
+            ./${SCRIPT}.sh $ratios $full
         done
     done
 done

@@ -187,7 +187,9 @@ uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
 
 [[ConditionalDists]]
 deps = ["ChainRulesCore", "Distributions", "DistributionsAD", "Functors", "LinearAlgebra", "Random", "Requires"]
-path = "C:\\Users\\masen\\Desktop\\master_thesis\\ConditionalDists.jl"
+git-tree-sha1 = "8242b39adec4f4d38a1652b224185f9c2f5a678a"
+repo-rev = "master"
+repo-url = "https://github.com/masenka31/ConditionalDists.jl"
 uuid = "c648c4dd-c1e0-49a6-84b9-144ae7fd2468"
 version = "0.4.10"
 
