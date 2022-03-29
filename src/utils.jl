@@ -52,3 +52,6 @@ end
 
 # encode labels to binary numbers
 encode(labels::Vector, missing_class::String) = Int.(labels .== missing_class)
+
+# project data
+project_data(X::AbstractBagNode) = Mill.data(Mill.data(X))

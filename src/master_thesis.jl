@@ -15,6 +15,8 @@ include("knn.jl")
 include("kl_divergence.jl")
 include("confusion_matrix.jl")
 
+include("models/Models.jl")
+
 export train_test_split
 export scatter2, scatter2!, scatter3, scatter3!
 export millnet_constructor
@@ -23,5 +25,6 @@ export safe_softplus
 export split_semisupervised_data
 export split_semisupervised_balanced
 export confusion_matrix
+export project_data
 
 end # module
