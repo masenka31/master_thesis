@@ -8,11 +8,12 @@ using Plots
 using Flux
 using DistributionsAD, Distributions
 
-include(srcdir("data.jl"))
-include(srcdir("constructors.jl"))
-include(srcdir("utils.jl"))
-include(srcdir("knn.jl"))
-include(srcdir("kl_divergence.jl"))
+include("data.jl")
+include("constructors.jl")
+include("utils.jl")
+include("knn.jl")
+include("kl_divergence.jl")
+include("confusion_matrix.jl")
 
 export train_test_split
 export scatter2, scatter2!, scatter3, scatter3!
@@ -21,5 +22,6 @@ export kl_divergence
 export safe_softplus
 export split_semisupervised_data
 export split_semisupervised_balanced
+export confusion_matrix
 
 end # module

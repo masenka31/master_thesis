@@ -83,29 +83,33 @@ scatter2!(model[1:end-1](Xt), zcolor=yt, marker=:star)
 include(scriptsdir("conditional_losses.jl"))
 include(scriptsdir("conditional_bag_losses.jl"))
 
-# mill model to get one-vector bag representation
-bagmodel = Chain(reflectinmodel(
-    Xk,
-    d -> Dense(d, 2),
-    SegmentedMeanMax
-), Mill.data)
-
 # parameters
-c = n       # number of classes
+c = n = 10       # number of classes
 zdim = 2      # latent dimension
 xdim = 2    # input dimension
+bdim = 4
+
+# mill model to get one-vector bag representation
+bagmodel = Chain(
+    reflectinmodel(
+        Xk,
+        d -> Dense(d, 4),
+        SegmentedMeanMax
+    ),
+    Mill.data, Dense(4, 4, swish), Dense(4, bdim)
+)
 
 # latent prior - isotropic gaussian
 pz = MvNormal(zeros(Float32, zdim), 1f0)    # check that eltype is Float32
 # categorical prior
-α = softmax(Float32.(randn(c)))             # α is a trainable parameter!
+α = softmax(Float32.(ones(c)))             # α is a trainable parameter!
 
 # categorical approximate
-α_qy_x = Chain(Dense(2,2,swish), Dense(2,c),softmax)
+α_qy_x = Chain(Dense(bdim, c), softmax)
 qy_x = ConditionalCategorical(α_qy_x)
 
 # encoder
-net_xz = Chain(Dense(xdim+c,4,swish), Dense(4, 4, swish), SplitLayer(4, [zdim,zdim], [identity, safe_softplus]))
+net_xz = Chain(Dense(xdim+bdim+c,4,swish), Dense(4, 4, swish), SplitLayer(4, [zdim,zdim], [identity, safe_softplus]))
 qz_xy = ConditionalMvNormal(net_xz)
 
 # decoder
@@ -117,15 +121,15 @@ ps = Flux.params(α, qz_xy, qy_x, px_yz, bagmodel)
 opt = ADAM()
 
 # minibatch function for bags
-function minibatch(Xk, y, Xu;ksize=64, usize=64)
-    kix = sample(1:nobs(Xk), ksize)
-    uix = sample(1:nobs(Xu), usize)
+# function minibatch(Xk, y, Xu;ksize=64, usize=64)
+#     kix = sample(1:nobs(Xk), ksize)
+#     uix = sample(1:nobs(Xu), usize)
 
-    xk, yk = Xk[kix], y[kix]
-    xu = Xu[uix]
+#     xk, yk = Xk[kix], y[kix]
+#     xu = Xu[uix]
 
-    return xk, yk, xu
-end
+#     return xk, yk, xu
+# end
 function minibatch(Xk, y, Xu;ksize=64, usize=64)
     if ksize > length(y)
         xk, yk = [Xk[i] for i in 1:nobs(Xk)], y
@@ -151,16 +155,16 @@ function accuracy(X, y, c)
 end
 accuracy(X, y) = accuracy(X, y, c)
 
-function semisupervised_loss(xk, y, xu, N)
-    # known and unknown losses
-    l_known = loss_known_mill(xk, y)
-    l_unknown = loss_unknown_mill(xu)
+# function semisupervised_loss(xk, y, xu, N)
+#     # known and unknown losses
+#     l_known = loss_known_mill(xk, y)
+#     l_unknown = loss_unknown_mill(xu)
 
-    # classification loss on known data
-    lc = 0.1 * N * loss_classification_mill(xk, y)
+#     # classification loss on known data
+#     lc = 0.1 * N * loss_classification_mill(xk, y)
 
-    return l_known + l_unknown + lc
-end
+#     return l_known + l_unknown + lc
+# end
 function semisupervised_loss(xk, y, xu, N)
     # known and unknown losses
     l_known = loss_known_bag(xk, y)
@@ -171,13 +175,28 @@ function semisupervised_loss(xk, y, xu, N)
 
     return l_known + l_unknown + lc
 end
+function semisupervised_warmup(xk, y, N)
+    # known and unknown losses
+    l_known = loss_known_bag(xk, y)
+
+    # classification loss on known data
+    lc = 0.1 * N * loss_classification(xk, y)
+
+    return l_known + lc
+end
+semisupervised_warmup(xk, y) = semisupervised_warmup(xk, y, ksize)
 
 ksize, usize = 64, 64
-loss(xk, yk, xu) = semisupervised_loss(xk, yk, xu, ksize*1.5)
 test_batch = minibatch(Xk, yk, Xu)
+loss(xk, yk, xu) = semisupervised_loss(xk, yk, xu, length(test_batch[2]))
 
-for i in 1:50
-    for k in 1:2
+for k in 1:100
+    b = minibatch(Xk, yk, Xu; ksize=ksize, usize=usize);
+    Flux.train!(semisupervised_warmup, ps, zip(b[1], b[2]), opt)
+end
+
+for i in 1:100
+    for k in 1:1
         b = minibatch(Xk, yk, Xu; ksize=ksize, usize=usize);
         Flux.train!(loss, ps, zip((b...)), opt)
     end
@@ -187,11 +206,19 @@ for i in 1:50
     @info "Train accuracy: $atr"
     @info "Test accuracy: $ats"
     @show loss(test_batch[1][1], test_batch[2][1], test_batch[3][1])
+    println(Flux.params(bagmodel))
 end
+
+latent = bagmodel(Xk)
+scatter2(latent, zcolor=yk, ms=7)
 
 r = probs(condition(qy_x, bagmodel(Xk)))
 i = 0
 i += 1;bar(r[i,:], color=Int.(yk), size=(1000,400), ylims=(0,1))
+
+r = probs(condition(qy_x, bagmodel(Xt)))
+i = 0
+i += 1;bar(r[i,:], color=Int.(yt), size=(1000,400), ylims=(0,1))
 
 
 latent = bagmodel(Xk)
@@ -201,7 +228,7 @@ scatter2!(latent_unknown, zcolor=yu, opacity=0.6, marker=:square, ms=2)
 latent_test = bagmodel(Xt)
 scatter2!(latent_test, zcolor=yt, marker=:star)
 
-scatter2(reconstruct_mean(Xk[1], yk[1]), color=:blue)
+scatter2!(reconstruct_mean(Xk[1], yk[1]), color=:blue)
 scatter2!(reconstruct_mean(Xk[2], yk[2]), color=:green)
 scatter2!(reconstruct_mean(Xk[3], yk[3]), color=:red)
 

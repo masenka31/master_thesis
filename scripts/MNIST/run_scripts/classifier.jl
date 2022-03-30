@@ -1,0 +1,170 @@
+using DrWatson
+@quickactivate
+
+using master_thesis
+using master_thesis: reindex, seqids2bags
+using master_thesis: encode
+
+using Flux, Mill
+using Random, StatsBase
+
+# prerequisities
+include(srcdir("point_cloud.jl"))
+project_data(X::AbstractBagNode) = Mill.data(Mill.data(X))
+
+# args
+r = parse(Float64, ARGS[1])     # controls ratio of known labels
+ratios = (r, 0.5-r, 0.5)        # get the ratios
+full = parse(Bool, ARGS[2])
+
+# sample model parameters
+function sample_params()
+    hdim = sample([8,16,32,64])         # hidden dimension
+    ldim = sample([2,4,8,16])           # latent dimension (last layer before softmax layer)
+    batchsize = sample([64, 128, 256])
+    agg = sample([SegmentedMean, SegmentedMax, SegmentedMeanMax])   # HMill aggregation function
+    activation = sample(["relu", "swish"])
+    return hdim, ldim, batchsize, agg, activation
+end
+
+# function to get validation data
+function validation_data(yk, Xu, yu, seed, classes)
+    # set seed
+    (seed == nothing) ? nothing : Random.seed!(seed)
+
+    c = length(classes)
+    n = round(Int, length(yk) / c)
+    N = length(yu)
+
+    ik = []
+    for i in 1:c
+        avail_ix = (1:N)[yu .== classes[i]]
+        ix = sample(avail_ix, n)
+        push!(ik, ix)
+    end
+    ik = shuffle(vcat(ik...))
+
+    x, y = reindex(Xu, ik), yu[ik]
+
+    # reset seed
+	(seed !== nothing) ? Random.seed!() : nothing
+
+    return x, y
+end
+
+# load dataset
+data = load_mnist_point_cloud()
+
+# define training time -- less train time for smaller number of known data
+if r == 0.002
+    max_train_time = 60*45
+elseif r == 0.01
+    max_train_time = 60*90
+elseif r == 0.05
+    max_train_time = 60*180
+end
+
+# model parameters
+pvec = sample_params()
+
+function train_and_save(data, pvec, seed, ratios, full, max_train_time)
+    @info "Starting loop for seed no. $seed."
+
+    # get parameters
+    hdim, ldim, batchsize, agg, activation_string = pvec
+    activation = eval(Symbol(activation_string))
+    parameters = (hdim = hdim, ldim = ldim, batchsize = batchsize, agg = agg, activation = activation_string)
+
+    # split dataset
+    if full
+        Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(data.data, data.bag_labels; ratios=ratios, seed=seed)
+    else
+        # hardcode to only get 4 predefined numbers
+        b = map(x -> any(x .== [0,1,3,4]), data.bag_labels)
+        filt_data, filt_labels = reindex(data.data, b), data.bag_labels[b]
+        Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(filt_data, filt_labels; ratios=ratios, seed=seed)
+    end
+
+    # minibatch function
+    function minibatch()
+        ix = sample(1:nobs(Xk), batchsize)
+        xb = reindex(Xk, ix)
+        yb = yoh_train[:, ix]
+        xb, yb
+    end
+
+    # global parameters
+    classes = sort(unique(yk))
+    n = c = length(classes)
+    Xval, yval = validation_data(yk, Xu, yu, seed, classes)
+
+    # prepare data
+    Xtrain = Xk
+    ytrain = yk
+    yoh_train = Flux.onehotbatch(ytrain, classes)
+
+    @info "Data loaded, split and prepared."
+
+    # create the model
+    mill_model = reflectinmodel(
+        Xtrain,
+        d -> Dense(d, hdim, activation),
+        SegmentedMeanMax
+    )
+    model = Chain(
+            mill_model, Mill.data,
+            Dense(hdim, hdim, activation), Dense(hdim, hdim, activation),
+            Dense(hdim, ldim), Dense(ldim, n)
+    )
+
+    # create loss and accuracy functions
+    loss(x, y) = Flux.logitcrossentropy(model(x), y)
+    accuracy(x, y) = round(mean(classes[Flux.onecold(model(x))] .== y), digits=4)
+    predict_label(X) = Flux.onecold(model(X), classes)
+    opt = ADAM()
+
+    @info "Starting training with parameters $(parameters)..."
+    start_time = time()
+
+    while time() - start_time < max_train_time
+        batches = map(_ -> minibatch(), 1:10)
+        Flux.train!(loss, Flux.params(model), batches, opt)
+        # @info "Batch loss = $(mean(map(x -> loss(x...), batches)))"
+        # @show accuracy(Xtrain, ytrain)
+        # @show accuracy(Xval, yval)
+    end
+    @info "Training finished."
+
+    ####################
+    ### Save results ###
+    ####################
+
+    # accuracy results
+    train_acc = accuracy(Xk, yk)      # known labels
+    val_acc = accuracy(Xval, yval)    # validation - used for hyperparameter choice
+    test_acc = accuracy(Xt, yt)       # test data - this is the reference accuracy of model quality
+
+    # confusion matrix on test data
+    cm, df = confusion_matrix(classes, Xt, yt, predict_label)
+
+    results = Dict(
+        :modelname => "classifier",
+        :parameters => parameters,
+        :train_acc => train_acc,
+        :val_acc => val_acc,
+        :test_acc => test_acc,
+        :model => model,
+        :CM => (cm, df),
+        :seed => seed, 
+        :r => r,
+        :full => full
+    )
+    @info "Results calculated, saving..."
+
+    nm = savename(savename(parameters), results, "bson")
+    safesave(datadir("experiments", "MNIST", "classifier", nm), results)
+end
+
+for seed in 1:5
+    train_and_save(data, pvec, seed, ratios, full, max_train_time)
+end
