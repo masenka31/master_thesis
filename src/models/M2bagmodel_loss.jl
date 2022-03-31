@@ -63,21 +63,28 @@ loss_known_bag(model::M2BagModel, Xb, y, c) = sum(loss_known_bag_vec(model, Xb, 
 
 function loss_unknown(model::M2BagModel, Xb, c) # x::AbstractMatrix
     lmat = mapreduce(y -> loss_known_bag_vec(model, Xb, y, c), hcat, 1:c)
-    prob = condition(model.qy_x, model.bagmodel(Xb)).α
+    # prob = condition(model.qy_x, model.bagmodel(Xb)).α
+    prob = softmax(model.bagmodel(Xb))
 
     l = sum(lmat' .* prob)
-    e = - mean(entropy(condition(model.qy_x, model.bagmodel(Xb))))
+    # e = - mean(entropy(condition(model.qy_x, model.bagmodel(Xb))))
+    e = - entropy(prob)
     return l + e
 end
 
-function loss_classification(model::M2BagModel, Xb, y)
+function loss_classification(model::M2BagModel, Xb, y::Int)
     #- logpdf(condition(qy_x, bagmodel(Xb)[:]), y)
     - mean(logpdf(condition(model.qy_x, model.bagmodel(Xb)), [y]))
+end
+function loss_classification(model::M2BagModel, Xb, y::Vector{T}) where T<:Int
+    #- logpdf(condition(qy_x, bagmodel(Xb)[:]), y)
+    - mean(logpdf(condition(model.qy_x, model.bagmodel(Xb)), y))
 end
 
 function loss_classification_crossentropy(model::M2BagModel, Xb, y, c)
     #- logpdf(condition(qy_x, bagmodel(Xb)[:]), y)
-    Flux.crossentropy(condition(model.qy_x, model.bagmodel(Xb)).α, Flux.onehotbatch(y, 1:c))
+    # Flux.crossentropy(condition(model.qy_x, model.bagmodel(Xb)).α, Flux.onehotbatch(y, 1:c))
+    Flux.logitcrossentropy(model.bagmodel(Xb), Flux.onehotbatch(y, 1:c))
 end
 
 function semisupervised_loss(model::M2BagModel, xk, y, xu, c, N)
@@ -124,10 +131,12 @@ loss_known_bag_Chamfer(model::M2BagModel, Xb, y, c) = sum(loss_known_bag_vec_Cha
 
 function loss_unknown_Chamfer(model::M2BagModel, Xb, c) # x::AbstractMatrix
     lmat = mapreduce(y -> loss_known_bag_vec_Chamfer(model, Xb, y, c), hcat, 1:c)
-    prob = condition(model.qy_x, model.bagmodel(Xb)).α
+    # prob = condition(model.qy_x, model.bagmodel(Xb)).α
+    prob = softmax(model.bagmodel(Xb))
 
     l = sum(lmat' .* prob)
-    e = - mean(entropy(condition(model.qy_x, model.bagmodel(Xb))))
+    # e = - mean(entropy(condition(model.qy_x, model.bagmodel(Xb))))
+    e = entropy(prob)
     return l + e
 end
 
@@ -162,3 +171,44 @@ function reconstruct_mean(model::M2BagModel, Xb, y, c)
     yz = vcat(z, yoh)
     condition(model.px_yz, yz).μ
 end
+
+function chamfer_score(model::M2BagModel, Xb, classes)
+    c = length(classes)
+    scores = zeros(c)
+    for y in 1:c
+        Xhat = reconstruct(model, Xb, y, c)
+        scores[y] = chamfer_distance(project_data(Xb), Xhat)
+    end
+    classes[findmin(scores)[2]]
+end
+
+#################################################
+### Other losses for "effective" minibatching ###
+#################################################
+
+lknown(xk, y) = loss_known_bag_Chamfer(model, xk, y, c)
+lunknown(xu) = loss_unknown_Chamfer(model, xu, c)
+
+# reconstruction loss - known + unknown
+function loss_rec(Xk, yk, Xu)
+    l_known = mean(lknown.(Xk, yk))
+    l_unknown = mean(lunknown.(Xu))
+    return l_known + l_unknown
+end
+
+# this needs to be in a script
+# N = size(project_data(Xk), 2)
+# lclass(x, y) = loss_classification_crossentropy(model, x, y, c) * 0.1f0 * N
+
+# # now we should be able to dispatch over bags and labels
+# function lossf(Xk, yk, Xu)
+#     nk = nobs(Xk)
+#     bk = Flux.Zygote.@ignore [Xk[i] for i in 1:nk]
+
+#     nu = nobs(Xu)
+#     bu = Flux.Zygote.@ignore [Xu[i] for i in 1:nu]
+    
+#     lr = loss_rec(bk, yk, bu)
+#     lc = lclass(Xk, yk)
+#     return lr + lc
+# end

@@ -12,6 +12,7 @@ include("M2bagmodel_loss.jl")
 export M2BagModel, M2Bag, M2BagDense, M2BagSimple
 export M2_bag_constructor
 export semisupervised_loss, semisupervised_loss_Chamfer
+export loss_rec, loss_classification_crossentropy
 export reconstruct, reconstruct_mean
 
 end

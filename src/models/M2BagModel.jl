@@ -51,8 +51,9 @@ end
 function Base.show(io::IO, m::M2BagModel)
     s = """$(nameof(typeof(m))):
         prior: N(0, I)
-        α: $(m.α)
-        HMill: $(typeof(m.bagmodel.layers[1].a))
+        α: $(softmax(m.α))
+        activation: $(match(r"[^)]*(relu|swish|tanh)\)", String(Symbol(m.qz_xy.mapping[1])))[1])
+        HMill aggregation: $(typeof(m.bagmodel.layers[1].a))
     """
     print(io, s)
 end
@@ -71,21 +72,25 @@ function Flux.trainable(m::M2BagSimple)
     (α=m.α, bagmodel=m.bagmodel, qy_x=m.qy_x, qz_xy=m.qz_xy, px_yz=m.px_yz)
 end
 
-function M2_bag_constructor(Xk, c; bdim=2, hdim=4, zdim=2, aggregation=SegmentedMeanMax, activation=swish, type=:vanilla)
+function M2_bag_constructor(Xk, c; bdim=2, hdim=4, zdim=2, aggregation=SegmentedMeanMax, activation=swish, type=:vanilla, kwargs...)
+    if typeof(activation) == String
+        activation = eval(Symbol(activation))
+    end
+    
     # mill model to get one-vector bag representation
     bagmodel = Chain(reflectinmodel(
         Xk,
         d -> Dense(d, hdim),
         aggregation
-    ), Mill.data, Dense(hdim, hdim, activation), Dense(hdim, bdim));
+    ), Mill.data, Dense(hdim, hdim, activation), Dense(hdim, hdim, activation), Dense(hdim, bdim), Dense(bdim, c))
 
     # latent prior - isotropic gaussian
     pz = MvNormal(zeros(Float32, zdim), 1f0)
     # categorical prior
     α = softmax(Float32.(ones(c)))
 
-    # categorical approximate
-    α_qy_x = Chain(Dense(bdim,hdim,activation), Dense(hdim,c),softmax)
+    # categorical approximate (not used in the current version)
+    α_qy_x = Chain(Dense(c,c),softmax)
     qy_x = ConditionalCategorical(α_qy_x)
 
     # decoder
@@ -99,7 +104,7 @@ function M2_bag_constructor(Xk, c; bdim=2, hdim=4, zdim=2, aggregation=Segmented
         qz_xy = ConditionalMvNormal(net_xz)
         return M2Bag(pz, α, bagmodel, qy_x, qz_xy, px_yz)
     elseif type == :dense
-        net_xz = Chain(Dense(xdim+c+bdim,hdim,activation), Dense(hdim, hdim, activation), SplitLayer(hdim, [zdim,zdim], [identity, safe_softplus]))
+        net_xz = Chain(Dense(xdim+c+c,hdim,activation), Dense(hdim, hdim, activation), SplitLayer(hdim, [zdim,zdim], [identity, safe_softplus]))
         qz_xy = ConditionalMvNormal(net_xz)
         return M2BagDense(pz, α, bagmodel, qy_x, qz_xy, px_yz)
     elseif type == :simple
