@@ -23,10 +23,11 @@ project_data(X::AbstractBagNode) = Mill.data(Mill.data(X))
 
 # load MNIST data and split it
 data = load_mnist_point_cloud()
-b = map(x -> any(x .== [0,1,4]), data.bag_labels)
+b = map(x -> any(x .== [0,1,3,4]), data.bag_labels)
 filt_data, filt_labels = reindex(data.data, b), data.bag_labels[b]
-ratios = (0.01, 0.49, 0.5)
-Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(data.data, data.bag_labels; ratios=ratios)
+r = 0.002
+ratios = (r, 0.5-r, 0.5)
+# Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(data.data, data.bag_labels; ratios=ratios)
 Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(filt_data, filt_labels; ratios=ratios)
 length(yk)
 countmap(yk)
@@ -41,10 +42,10 @@ include(scriptsdir("conditional_losses.jl"))
 include(scriptsdir("conditional_bag_losses.jl"))
 
 # parameters
-zdim = 16
+zdim = 2
 xdim = 3
-hdim = 32
-bdim = 3
+hdim = 4
+bdim = 2
 
 # mill model to get one-vector bag representation
 bagmodel = Chain(reflectinmodel(
