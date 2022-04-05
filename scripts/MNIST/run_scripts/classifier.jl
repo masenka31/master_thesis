@@ -126,12 +126,14 @@ function train_and_save(data, pvec, seed, ratios, full, max_train_time)
     @info "Starting training with parameters $(parameters)..."
     start_time = time()
 
-    while time() - start_time < max_train_time
+    # while time() - start_time < max_train_time
+    for i in 1:1000
         batches = map(_ -> minibatch(), 1:10)
         Flux.train!(loss, Flux.params(model), batches, opt)
         # @info "Batch loss = $(mean(map(x -> loss(x...), batches)))"
         # @show accuracy(Xtrain, ytrain)
-        # @show accuracy(Xval, yval)
+        @show a = accuracy(Xk, yk)
+        L[i] = a
     end
     @info "Training finished."
 

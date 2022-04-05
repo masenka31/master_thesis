@@ -14,28 +14,28 @@ safe_softplus(x::T) where T  = softplus(x) + T(0.000001)
 ######################################################
 
 function scatter2(X, x=1, y=2; kwargs...)
-    if size(X,1) > size(X,2)
-        X = X'
-    end
+    # if size(X,1) > size(X,2)
+    #     X = X'
+    # end
     scatter(X[x,:],X[y,:]; label="", kwargs...)
 end
 function scatter2!(X, x=1, y=2; kwargs...)
-    if size(X,1) > size(X,2)
-        X = X'
-    end
+    # if size(X,1) > size(X,2)
+    #     X = X'
+    # end
     scatter!(X[x,:],X[y,:]; label="", kwargs...)
 end
 
 function scatter3(X, x=1, y=2, z=3; kwargs...)
-    if size(X,1) > size(X,2)
-        X = X'
-    end
+    # if size(X,1) > size(X,2)
+    #     X = X'
+    # end
     scatter(X[x,:],X[y,:],X[z,:]; label="", kwargs...)
 end
 function scatter3!(X, x=1, y=2, z=3; kwargs...)
-    if size(X,1) > size(X,2)
-        X = X'
-    end
+    # if size(X,1) > size(X,2)
+    #     X = X'
+    # end
     scatter!(X[x,:],X[y,:],X[z,:]; label="", kwargs...)
 end
 

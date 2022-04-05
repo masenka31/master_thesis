@@ -3,6 +3,9 @@ using DrWatson
 
 using DataFrames, Flux, Mill, PrettyTables
 using Statistics
+using master_thesis
+using Distributions, DistributionsAD
+using ConditionalDists
 
 df = collect_results(datadir("experiments", "MNIST"), subfolders=true)
 
@@ -36,9 +39,11 @@ function get_results_table(df)
     sort(best, [:full, :r])
 end
 
-df_c = get_results_table(g_model[1])
-df_tr = get_results_table(g_model[2])
+df_m = get_results_M2(g_model[1])
+df_c = get_results_table(g_model[2])
+df_tr = get_results_table(g_model[3])
 
+df = filter(:modelname => x -> x != "M2", df)
 f1 = filter(:r => x -> x == 0.002, df)
 f1 = filter(:full => x -> x == true, f1)
 i = 4 # 1 for 4 classes, 4 for full

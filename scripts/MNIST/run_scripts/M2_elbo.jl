@@ -26,9 +26,11 @@ full = parse(Bool, ARGS[2])
 # seed = 1
 
 # check that the combination does not yet exist
-function check_params(savepath, parameters)
+function check_params(savepath, parameters, full, r)
     s = readdir(savepath)
-    cap = map(si -> match(r"known_acc=[0-9\.]*_seed=[0-9]_(.*)\.bson", si).captures[1], s)
+    str = "full=$(full)_r=$(r)_known_acc=[0-9\\.]*_seed=[0-9]_(.*)\\.bson"
+    rx = Regex(str)
+    cap = map(si -> match(rx, si).captures[1], s)
     n = savename(parameters)
     any(cap .== n) ? (return false) : (return true)
 end
@@ -43,7 +45,7 @@ function sample_params()
     agg = sample([SegmentedMean, SegmentedMax, SegmentedMeanMax])   # HMill aggregation function
     activation = sample(["swish", "relu", "tanh"])                  # activation function
     type = sample([:vanilla, :dense, :simple])
-    α = sample([0.1f0, 0.05f0, 0.01f0])
+    α = sample([1f0, 0.1f0, 0.05f0, 0.01f0])
     return parameters = (hdim = hdim, zdim = zdim, bdim = bdim, batchsize = batchsize, aggregation = agg, activation = activation, type = type, α = α)
 end
 
@@ -133,8 +135,8 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
         return xk, y, xu
     end
 
-    lknown(xk, y) = master_thesis.Models.loss_known_bag_Chamfer(model, xk, y, c)
-    lunknown(xu) = master_thesis.Models.loss_unknown_Chamfer(model, xu, c)
+    lknown(xk, y) = master_thesis.Models.loss_known_bag(model, xk, y, c)
+    lunknown(xu) = master_thesis.Models.loss_unknown(model, xu, c)
 
     # reconstruction loss - known + unknown
     function loss_rec(Xk, yk, Xu)
@@ -215,7 +217,7 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
 
     @info "Results calculated."
 
-    n = savename("known_acc=$(round(max_accuracy, digits=3))_seed=$seed", parameters, "bson")
+    n = savename("full=$(full)_r=$(r)_known_acc=$(round(max_accuracy, digits=3))_seed=$seed", parameters, "bson")
     results = Dict(
         :parameters => parameters,
         :seed => seed,
@@ -229,15 +231,15 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
         :chamfer_val => ch_val,
         :chamfer_test => ch_test,
         :CM => (cm, df),
-        :modelname => "M2",
+        :modelname => "M2_elbo",
         :model => best_model,
     )
 
-    safesave(datadir("experiments", "MNIST", "M2", n), results)
+    safesave(datadir("experiments", "MNIST", "M2_elbo", n), results)
     @info "Results for seed no. $seed saved."
 end
 
-savepath = datadir("experiments", "MNIST", "M2")
+savepath = datadir("experiments", "MNIST", "M2_elbo")
 ispath(savepath) ? nothing : mkdir(savepath)
 
 # for k in 1:500

@@ -26,5 +26,6 @@ export split_semisupervised_data
 export split_semisupervised_balanced
 export confusion_matrix
 export project_data
+export reindex, seqids2bags
 
 end # module

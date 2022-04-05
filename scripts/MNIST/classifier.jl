@@ -41,7 +41,7 @@ Xtrain = Xk
 ytrain = yk
 yoh_train = Flux.onehotbatch(ytrain, classes)
 hdim = 32   # hidden dimension
-ldim = 3    # latent dimension
+ldim = 8    # latent dimension
 
 # create a simple classificator model
 mill_model = reflectinmodel(
@@ -52,29 +52,41 @@ mill_model = reflectinmodel(
 model = Chain(
         mill_model, Mill.data,
         Dense(hdim, hdim, swish), Dense(hdim, hdim, swish),
-        Dense(hdim, ldim), Dense(ldim, n)
+        Dense(hdim, ldim), Dense(ldim, n, sigmoid)
 )
 
 # training parameters, loss etc.
 opt = ADAM()
-loss(x, y) = Flux.logitcrossentropy(model(x), y)
+# loss(x, y) = Flux.logitcrossentropy(model(x), y)
+loss(x, y) = Flux.mae(model(x), y)
+
+safe_log(x) = log(x + 10e-20)
+function loss_open(X, yoh)
+    yhat = model(X)
+    l1 = - sum(safe_log.(yhat[yoh]))
+    l2 = - sum(safe_log.(1 .- yhat[.!yoh]))
+    return l1 + l2
+end
+
 accuracy(x, y) = round(mean(classes[Flux.onecold(model(x))] .== y), digits=3)
 
 using IterTools
 using Flux: @epochs
 
-function minibatch(;batchsize=64)
+batchsize = 64
+function minibatch()
     ix = sample(1:nobs(Xk), batchsize)
     xb = reindex(Xk, ix)
     yb = yoh_train[:, ix]
     xb, yb
 end
 
-@epochs 100 begin
+@epochs 1000 begin
     batches = map(_ -> minibatch(), 1:10)
-    Flux.train!(loss, Flux.params(model), batches, opt)
-    @show loss(batches[1]...)
-    @show accuracy(Xtrain, ytrain)
+    # Flux.train!(loss, Flux.params(model), batches, opt)
+    Flux.train!(loss_open, Flux.params(model), batches, opt)
+    @show loss_open(batches[1]...)
+    @show accuracy(Xk, yk)
 end
 
 # accuracy
@@ -101,3 +113,17 @@ for i in 1:10
 end
 p
 
+enc = model(Xt)
+
+# those that should be classified right
+b = map(x -> sum(x .== 1) == 1, eachcol(enc))
+b = map(x -> sum(x .> 0.99) == 1, eachcol(enc))
+
+# those that have multiple classes possible
+b = map(x -> sum(sum(x .> 0.9) > 1), eachcol(enc)) |> BitVector
+sum(b)
+
+# get the accuracy on this data
+xx = reindex(Xt, (1:nobs(Xt))[b])
+yy = yt[b]
+accuracy(xx, yy)

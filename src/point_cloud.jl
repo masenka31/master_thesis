@@ -1,3 +1,6 @@
+using StatsBase
+using Mill
+
 ### MNIST point-cloud ###
 # unfortunately this is not available in a direct download format, so we need to do it awkwardly like this
 """

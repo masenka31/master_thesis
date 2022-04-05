@@ -136,7 +136,7 @@ function loss_unknown_Chamfer(model::M2BagModel, Xb, c) # x::AbstractMatrix
 
     l = sum(lmat' .* prob)
     # e = - mean(entropy(condition(model.qy_x, model.bagmodel(Xb))))
-    e = entropy(prob)
+    e = - entropy(prob)
     return l + e
 end
 
@@ -186,15 +186,15 @@ end
 ### Other losses for "effective" minibatching ###
 #################################################
 
-lknown(xk, y) = loss_known_bag_Chamfer(model, xk, y, c)
-lunknown(xu) = loss_unknown_Chamfer(model, xu, c)
+# lknown(xk, y) = loss_known_bag_Chamfer(model, xk, y, c)
+# lunknown(xu) = loss_unknown_Chamfer(model, xu, c)
 
-# reconstruction loss - known + unknown
-function loss_rec(Xk, yk, Xu)
-    l_known = mean(lknown.(Xk, yk))
-    l_unknown = mean(lunknown.(Xu))
-    return l_known + l_unknown
-end
+# # reconstruction loss - known + unknown
+# function loss_rec(Xk, yk, Xu)
+#     l_known = mean(lknown.(Xk, yk))
+#     l_unknown = mean(lunknown.(Xu))
+#     return l_known + l_unknown
+# end
 
 # this needs to be in a script
 # N = size(project_data(Xk), 2)

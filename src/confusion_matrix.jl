@@ -1,4 +1,13 @@
 using DataFrames, LinearAlgebra
+
+"""
+confusion_matrix(classes, X, y, predict_labels)
+
+Calculates a confusion matrix using true labels `y` and a function `predict_labels`
+to get label predictions.
+
+Returns the confusion matrix as well as a dataframe with accuracy per class.
+"""
 function confusion_matrix(classes, X, y, predict_labels)
     # get the predicted labels - example
     # function predict_labels(X)
