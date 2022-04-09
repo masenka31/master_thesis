@@ -76,6 +76,9 @@ function M2_bag_constructor(Xk, c; bdim=2, hdim=4, zdim=2, aggregation=Segmented
     if typeof(activation) == String
         activation = eval(Symbol(activation))
     end
+    if typeof(aggregation) == String
+        aggregation = eval(Symbol(aggregation))
+    end
     
     # mill model to get one-vector bag representation
     bagmodel = Chain(reflectinmodel(

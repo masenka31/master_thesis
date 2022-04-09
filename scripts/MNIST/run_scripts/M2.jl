@@ -40,10 +40,11 @@ function sample_params()
     zdim = sample([2,4,8,16])           # latent dimension
     bdim = sample([2,4,8,16])           # the dimension ob output of the HMill model
     batchsize = sample([64, 128, 256])
-    agg = sample([SegmentedMean, SegmentedMax, SegmentedMeanMax])   # HMill aggregation function
+    agg = sample(["SegmentedMean", "SegmentedMax", "SegmentedMeanMax"])   # HMill aggregation function
     activation = sample(["swish", "relu", "tanh"])                  # activation function
     type = sample([:vanilla, :dense, :simple])
-    α = sample([0.1f0, 0.05f0, 0.01f0])
+    # α = sample([0.1f0, 0.05f0, 0.01f0])
+    α = sample([1f0, 10f0, 100f0])
     return parameters = (hdim = hdim, zdim = zdim, bdim = bdim, batchsize = batchsize, aggregation = agg, activation = activation, type = type, α = α)
 end
 

@@ -9,4 +9,4 @@ FULL=$2
 
 module load Julia/1.6.4-linux-x86_64
 
-julia M2.jl $RATIOS $FULL
+julia chamfer.jl $RATIOS $FULL

@@ -22,8 +22,8 @@ export scatter2, scatter2!, scatter3, scatter3!
 export millnet_constructor
 export kl_divergence
 export safe_softplus
-export split_semisupervised_data
-export split_semisupervised_balanced
+export split_semisupervised_data, split_semisupervised_balanced
+export validation_data
 export confusion_matrix
 export project_data
 export reindex, seqids2bags

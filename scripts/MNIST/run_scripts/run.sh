@@ -25,7 +25,7 @@ fi
 #     done
 # done
 
-for n in {1..50}
+for n in {1..10}
 do
     for ratios in 0.002 0.01
     do
@@ -33,7 +33,7 @@ do
         do
             # submit to slurm
             sbatch \
-            --output="${LOG_DIR}/${n}_%A_%a.out" \
+            --output="${LOG_DIR}/n=${n}_r=${ratios}_f=${full}_%A_%a.out" \
             ./${SCRIPT}.sh $ratios $full
         done
     done
