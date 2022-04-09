@@ -97,7 +97,7 @@ function split_semisupervised_balanced(X::AbstractMillNode, y::Vector; ratios=(0
     ik = []
     for i in 1:c
         avail_ix = (1:n)[y .== un[i]]
-        ix = sample(avail_ix, r)
+        ix = sample(avail_ix, r, replace=false)
         push!(ik, ix)
     end
     ik = shuffle(vcat(ik...))
@@ -116,4 +116,38 @@ function split_semisupervised_balanced(X::AbstractMillNode, y::Vector; ratios=(0
 	(seed !== nothing) ? Random.seed!() : nothing
 
     return Xk, yk, Xu, yu, Xt, yt
+end
+
+function validation_catch(avail_ix, n)
+    try
+        return sample(avail_ix, n, replace=false)
+    catch e
+        return sample(avail_ix, length(avail_ix), replace=false)
+    end
+end
+
+function validation_data(yk, Xu, yu, seed, classes)
+    # set seed
+    (seed == nothing) ? nothing : Random.seed!(seed)
+
+    c = length(classes)
+    n = round(Int, length(yk) / c)
+    N = length(yu)
+
+    ik = []
+    for i in 1:c
+        avail_ix = (1:N)[yu .== classes[i]]
+        ix = validation_catch(avail_ix, n)
+        push!(ik, ix)
+    end
+    ik = shuffle(vcat(ik...))
+    ileft = setdiff(1:N, ik)
+
+    x, y = reindex(Xu, ik), yu[ik]
+    new_xu, new_yu = reindex(Xu, ileft), yu[ileft]
+
+    # reset seed
+	(seed !== nothing) ? Random.seed!() : nothing
+
+    return x, y, new_xu, new_yu
 end
