@@ -25,7 +25,7 @@ fi
 #     done
 # done
 
-for n in {1..10}
+for n in {1..30}
 do
     for ratios in 0.002 0.01
     do

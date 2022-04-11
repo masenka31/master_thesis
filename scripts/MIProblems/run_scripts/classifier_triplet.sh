@@ -5,7 +5,8 @@
 #SBATCH --mem=12G
 
 RATIOS=$1
+DATASET=$2
 
 module load Julia/1.6.4-linux-x86_64
 
-julia --threads 3 classifier_triplet.jl $RATIOS
+julia --threads 3 classifier_triplet.jl $RATIOS $DATASET

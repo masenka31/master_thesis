@@ -19,19 +19,6 @@ accs = map(x -> BSON.load(joinpath(modelpath, files[x]))[:val_acc], ixs)
 ix = findmax(accs)[2]
 model = models[ix]
 
-function load_model(par, modelname, r, full)
-    d = filter(:r => ri -> ri == r, filter(:full => fi -> fi == full, par[modelname]))
-    nm = savename(d.parameters[1])
-    modelpath = datadir("experiments", "MNIST", modelname)
-    files = readdir(modelpath)
-    ixs = findall(f -> (occursin(nm, f) && occursin("r=$r", f) && occursin("full=$full", f)), files)
-    models = map(x -> BSON.load(joinpath(modelpath, files[x]))[:model], ixs)
-    accs = map(x -> BSON.load(joinpath(modelpath, files[x]))[:val_acc], ixs)
-    ix = findmax(accs)[2]
-    model = models[ix]
-    return model, ix
-end
-
 using Plots
 ENV["GKSwstype"] = "100"
 gr(;markerstrokewidth=0, label="", color=:jet)

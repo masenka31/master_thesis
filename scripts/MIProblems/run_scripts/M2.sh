@@ -5,7 +5,8 @@
 #SBATCH --mem=18G
 
 RATIOS=$1
+DATASET=$2
 
 module load Julia/1.6.4-linux-x86_64
 
-julia --threads 3 M2.jl $RATIOS
+julia --threads 3 M2.jl $RATIOS $DATASET

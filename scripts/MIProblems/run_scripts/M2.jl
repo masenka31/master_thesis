@@ -14,8 +14,8 @@ include(srcdir("mill_data.jl"))
 r = parse(Float64, ARGS[1])
 ratios = (r, 0.5-r, 0.5)
 max_train_time = 60*15
-# dataset = ARGS[2]
-dataset = "animals"
+dataset = ARGS[2]
+# dataset = "animals"
 checkpath = datadir("experiments", "MIProblems", dataset, "M2", "seed=1")
 mkpath(checkpath)
 

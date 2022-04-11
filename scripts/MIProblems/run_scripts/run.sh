@@ -2,6 +2,7 @@
 # This runs experiments
 
 SCRIPT=$1
+DATASET=$2
 
 LOG_DIR="${HOME}/logs/masters/MIProblems/$SCRIPT"
 
@@ -16,7 +17,7 @@ do
     do
         # submit to slurm
         sbatch \
-        --output="${LOG_DIR}/n=${n}_r=${ratios}_%A_%a.out" \
-        ./${SCRIPT}.sh $ratios
+        --output="${LOG_DIR}/${DATASET}n=${n}_r=${ratios}_%A_%a.out" \
+        ./${SCRIPT}.sh $ratios $DATASET
     done
 done

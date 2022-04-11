@@ -59,10 +59,10 @@ function dist_knn(k, distance_matrix, ytrain, ytest)
         mx = my_findmax(c)
 
         j = k + 1
-        if length(mx) > 1
-            # println(i, ": ", c)
-        end
+
+        length(mx) > 1 ? print("Increasing ") : nothing
         while length(mx) > 1
+            print(".")
             neighbors_ix = partialsortperm(distance_matrix[i,:], 1:j)
             neighbors_l = ytrain[neighbors_ix]
             c = countmap(neighbors_l)
@@ -75,8 +75,8 @@ function dist_knn(k, distance_matrix, ytrain, ytest)
         final_label = Tuple(mx...)[2]
         y_predicted[i] = final_label
     end
-    acc = sum(y_predicted .== ytest) / length(ytest)
-    @info "Test accuracy: $(round(acc, digits=4))"
+    acc = mean(y_predicted .== ytest)
+    @info "Accuracy: $(round(acc, digits=4))"
     y_predicted, acc
 end
 

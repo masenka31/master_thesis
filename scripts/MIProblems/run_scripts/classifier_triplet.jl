@@ -12,8 +12,8 @@ include(srcdir("mill_data.jl"))
 
 r = parse(Float64, ARGS[1])
 ratios = (r, 0.5-r, 0.5)
-# dataset = ARGS[2]
-dataset = "animals"
+dataset = ARGS[2]
+# dataset = "animals"
 checkpath = datadir("experiments", "MIProblems", dataset, "classifier_triplet", "seed=1")
 mkpath(checkpath)
 
