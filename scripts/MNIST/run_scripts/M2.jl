@@ -25,15 +25,6 @@ full = parse(Bool, ARGS[2])
 # for now, just testing
 # seed = 1
 
-# check that the combination does not yet exist
-function check_params(savepath, parameters)
-    s = readdir(savepath)
-    cap = map(si -> match(r"known_acc=[0-9\.]*_seed=[0-9]_(.*)\.bson", si).captures[1], s)
-    n = savename(parameters)
-    any(cap .== n) ? (return false) : (return true)
-end
-
-
 # sample model parameters
 function sample_params()
     hdim = sample([16,32,64])           # hidden dimension
@@ -46,33 +37,6 @@ function sample_params()
     # α = sample([0.1f0, 0.05f0, 0.01f0])
     α = sample([1f0, 10f0, 100f0])
     return parameters = (hdim = hdim, zdim = zdim, bdim = bdim, batchsize = batchsize, aggregation = agg, activation = activation, type = type, α = α)
-end
-
-# function to get validation data and return new unknown data
-function validation_data(yk, Xu, yu, seed, classes)
-    # set seed
-    (seed == nothing) ? nothing : Random.seed!(seed)
-
-    c = length(classes)
-    n = round(Int, length(yk) / c)
-    N = length(yu)
-
-    ik = []
-    for i in 1:c
-        avail_ix = (1:N)[yu .== classes[i]]
-        ix = sample(avail_ix, n)
-        push!(ik, ix)
-    end
-    ik = shuffle(vcat(ik...))
-    ileft = setdiff(1:N, ik)
-
-    x, y = reindex(Xu, ik), yu[ik]
-    new_xu, new_yu = reindex(Xu, ileft), yu[ileft]
-
-    # reset seed
-	(seed !== nothing) ? Random.seed!() : nothing
-
-    return x, y, new_xu, new_yu
 end
 
 # load MNIST data

@@ -71,23 +71,25 @@ hierarchical_average(DM, k) = cutree(hclust(DM, linkage=:average), k=k)
 accuracy(y1, y2) = mean(y1 .== y2)
 
 function cluster(DM::AbstractMatrix, y::AbstractVector, clusterfun, k; iter=5)
-    max_silh = 0
-    cbest = ClusteringResult
+    # max_silh = 0
+    # cbest = ClusteringResult
 
-    if clusterfun in [kmedoids, kmeans]
-        @showprogress "Clustering with $k clusters\n:" for i in 1:iter
-            c = clusterfun(DM, k)
-            m = mean(silhouettes(c, DM))
-            if m > max_silh
-                cbest = c
-                max_silh = m
-            end
-        end
-    else
-        cbest = clusterfun(DM, k)
-        max_silh = mean(silhouettes(cbest, DM))
-    end
+    # if clusterfun in [kmedoids, kmeans]
+    #     @showprogress "Clustering with $k clusters\n:" for i in 1:iter
+    #         c = clusterfun(DM, k)
+    #         m = mean(silhouettes(c, DM))
+    #         if m > max_silh
+    #             cbest = c
+    #             max_silh = m
+    #         end
+    #     end
+    # else
+    #     cbest = clusterfun(DM, k)
+    #     max_silh = mean(silhouettes(cbest, DM))
+    # end
     
+    cbest = clusterfun(DM, k)
+    max_silh = mean(silhouettes(cbest, DM))
     ri = randindex(y, cbest)
     mi = mutualinfo(y, cbest)
     return DataFrame(

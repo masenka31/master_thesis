@@ -191,7 +191,7 @@ pretty_table(
 )
 
 results_dict = Dict(
-    :full_df => :rdf,
+    :full_df => rdf,
     :combined_df => cdf,
     :parameters => params,
     :r => r,

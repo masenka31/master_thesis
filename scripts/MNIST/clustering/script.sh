@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --time=4:00:00
-#SBATCH --partition=cpufast
+#SBATCH --time=24:00:00
+#SBATCH --partition=cpu
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=30G
 

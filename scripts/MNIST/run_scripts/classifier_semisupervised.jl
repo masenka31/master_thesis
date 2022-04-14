@@ -7,9 +7,11 @@ using master_thesis: encode
 
 using Flux, Mill
 using Random, StatsBase
+using DataFrames
 
 # prerequisities
 include(srcdir("point_cloud.jl"))
+include(scriptsdir("MNIST", "semisup.jl"))
 
 # args
 r = parse(Float64, ARGS[1])     # controls ratio of known labels
@@ -18,7 +20,7 @@ full = parse(Bool, ARGS[2])
 
 # sample model parameters
 function sample_params()
-    hdim = sample([8,16,32,64])         # hidden dimension
+    hdim = sample([16,32,64,128])         # hidden dimension
     batchsize = sample([64, 128, 256])
     agg = sample(["SegmentedMean", "SegmentedMax", "SegmentedMeanMax"])   # HMill aggregation function
     activation = sample(["relu", "swish", "tanh"])
@@ -29,20 +31,22 @@ end
 data = load_mnist_point_cloud()
 
 # define training time -- less train time for smaller number of known data
-if full
-    max_train_time = 60*180
-else
+if r == 0.002
+    max_train_time = 60*45
+elseif r == 0.01
     max_train_time = 60*90
+elseif r == 0.05
+    max_train_time = 60*180
 end
 
 # model parameters
-pvec = sample_params()
+parameters = sample_params()
 
-function train_and_save(data, pvec, seed, ratios, full, max_train_time)
+function train_and_save(data, parameters, seed, ratios, full, max_train_time)
     @info "Starting loop for seed no. $seed."
 
     # get parameters
-    hdim, batchsize, agg_string, activation_string = pvec
+    hdim, batchsize, agg_string, activation_string = parameters
     activation = eval(Symbol(activation_string))
     aggregation = eval(Symbol(agg_string))
     parameters = (hdim = hdim, batchsize = batchsize, agg = agg_string, activation = activation_string)
@@ -60,65 +64,43 @@ function train_and_save(data, pvec, seed, ratios, full, max_train_time)
     # global parameters
     classes = sort(unique(yk))
     n = c = length(classes)
-    Xval, yval, Xu, yu = validation_data(yk, Xu, yu, seed, classes)
+    Xval, yval, _Xu, _yu = validation_data(yk, Xu, yu, seed, classes)
+    Xu, yu = _Xu, _yu
+    _Xk, _yk = Xk, yk
 
     # prepare data
     Xtrain = Xk
     ytrain = yk
     yoh_train = Flux.onehotbatch(ytrain, classes)
-    
-    # minibatch function
-    function minibatch()
-        ix = sample(1:nobs(Xk), batchsize)
-        xb = reindex(Xk, ix)
-        yb = yoh_train[:, ix]
-        xb, yb
-    end
 
     @info "Data loaded, split and prepared."
 
-    # create the model
-    mill_model = reflectinmodel(
-        Xtrain,
-        d -> Dense(d, hdim, activation),
-        aggregation
-    )
-    model = Chain(
-            mill_model, Mill.data,
-            Dense(hdim, hdim, activation), Dense(hdim, hdim, activation), Dense(hdim, n)
-    )
+    best_models = []
+    best_val_accs = []
+    ks = [7, 14, 21, 28, 35]
 
-    # create loss and accuracy functions
-    loss(x, y) = Flux.logitcrossentropy(model(x), y)
-    accuracy(x, y) = round(mean(Flux.onecold(model(x), classes) .== y), digits=4)
-    predict_label(X) = Flux.onecold(model(X), classes)
-    opt = ADAM()
-    best_val_acc = 0
-    best_model = deepcopy(model)
-    
-    @info "Starting training with parameters $(parameters)..."
-    
-    start_time = time()
-    while time() - start_time < max_train_time
-        batches = map(_ -> minibatch(), 1:10)
-        Flux.train!(loss, Flux.params(model), batches, opt)
-        a = accuracy(Xval, yval)
-        if a >= best_val_acc
-            @show a
-            @show accuracy(Xt, yt)
-            best_model = deepcopy(model)
-            best_val_acc = a
-        end
+    for i in 1:1
+        @show length(yk)
+        Xk, yk, Xu, yu, model, acc = train_classifier(hdim, batchsize, activation, aggregation, Xk, yk, Xval, yval, Xu, yu; k=ks[i], max_train_time = max_train_time/5)
+        Xtrain = Xk
+        ytrain = yk
+        yoh_train = Flux.onehotbatch(ytrain, classes)
+        push!(best_models, model)
+        push!(best_val_accs, acc)
     end
-    @info "Training finished."
-    model = deepcopy(best_model)
+
+    # find the best model
+    ix = findmax(best_val_accs)[2]
+    model = best_models[ix]
+    accuracy(x::BagNode, y) = round(mean(classes[Flux.onecold(model(x))] .== y), digits=4)
+    predict_label(X) = Flux.onecold(model(X), classes)
 
     ####################
     ### Save results ###
     ####################
 
     # accuracy results
-    train_acc = accuracy(Xk, yk)      # known labels
+    train_acc = accuracy(_Xk, _yk)      # known labels
     val_acc = accuracy(Xval, yval)    # validation - used for hyperparameter choice
     test_acc = accuracy(Xt, yt)       # test data - this is the reference accuracy of model quality
 
@@ -126,7 +108,7 @@ function train_and_save(data, pvec, seed, ratios, full, max_train_time)
     cm, df = confusion_matrix(classes, Xt, yt, predict_label)
 
     results = Dict(
-        :modelname => "classifier",
+        :modelname => "kNN_semisupervised_classifier",
         :parameters => parameters,
         :train_acc => train_acc,
         :val_acc => val_acc,
@@ -140,9 +122,9 @@ function train_and_save(data, pvec, seed, ratios, full, max_train_time)
     @info "Results calculated, saving..."
 
     nm = savename(savename(parameters), results, "bson")
-    safesave(datadir("experiments", "MNIST", "classifier", "seed=$seed", nm), results)
+    safesave(datadir("experiments", "MNIST", "kNN_semisupervised_classifier", nm), results)
 end
 
 for seed in 1:5
-    train_and_save(data, pvec, seed, ratios, full, max_train_time)
+    train_and_save(data, parameters, seed, ratios, full, max_train_time)
 end

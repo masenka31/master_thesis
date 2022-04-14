@@ -19,7 +19,6 @@ using master_thesis: reindex, seqids2bags
 using master_thesis: encode
 
 include(srcdir("point_cloud.jl"))
-project_data(X::AbstractBagNode) = Mill.data(Mill.data(X))
 
 # load MNIST data and split it
 data = load_mnist_point_cloud()
@@ -27,26 +26,34 @@ b = map(x -> any(x .== [0,1,3,4]), data.bag_labels)
 filt_data, filt_labels = reindex(data.data, b), data.bag_labels[b]
 r = 0.002
 ratios = (r, 0.5-r, 0.5)
-# Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(data.data, data.bag_labels; ratios=ratios)
-Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(filt_data, filt_labels; ratios=ratios)
+seed = 1
+Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(data.data, data.bag_labels; ratios=ratios, seed=1)
+# Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(filt_data, filt_labels; ratios=ratios)
 length(yk)
 countmap(yk)
 classes = sort(unique(yk))
 n = c = length(classes)
 
+Xval, yval, Xu, yu = validation_data(yk, Xu, yu, seed, classes)
+
 ################################################################
 ###                 Semi-supervised M2 model                 ###
 ################################################################
 
-include(scriptsdir("conditional_losses.jl"))
-include(scriptsdir("conditional_bag_losses.jl"))
+function sample_params()
+    hdim = sample([16,32,64])           # hidden dimension
+    zdim = sample([2,4,8,16])           # latent dimension
+    bdim = sample([2,4,8,16])           # the dimension ob output of the HMill model
+    batchsize = sample([64, 128, 256])
+    agg = sample(["SegmentedMean", "SegmentedMax", "SegmentedMeanMax"])   # HMill aggregation function
+    activation = sample(["swish", "relu", "tanh"])                  # activation function
+    type = sample([:vanilla, :dense, :simple])
+    # α = sample([0.1f0, 0.05f0, 0.01f0])
+    α = sample([1f0, 10f0, 100f0])
+    return parameters = (hdim = hdim, zdim = zdim, bdim = bdim, batchsize = batchsize, aggregation = agg, activation = activation, type = type, α = α)
+end
 
-# parameters
-zdim = 2
-xdim = 3
-hdim = 4
-bdim = 2
-
+parameters = sample_params()
 # mill model to get one-vector bag representation
 bagmodel = Chain(reflectinmodel(
     Xk,

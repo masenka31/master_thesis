@@ -17,15 +17,17 @@ function scatter2(X, x=1, y=2; kwargs...)
     # if size(X,1) > size(X,2)
     #     X = X'
     # end
-    scatter(X[x,:],X[y,:]; label="", kwargs...)
+    p = scatter(X[x,:],X[y,:]; label="", kwargs...)
     savefig("plot.png")
+    p
 end
 function scatter2!(X, x=1, y=2; kwargs...)
     # if size(X,1) > size(X,2)
     #     X = X'
     # end
-    scatter!(X[x,:],X[y,:]; label="", kwargs...)
+    p = scatter!(X[x,:],X[y,:]; label="", kwargs...)
     savefig("plot.png")
+    p
 end
 
 function scatter3(X, x=1, y=2, z=3; kwargs...)

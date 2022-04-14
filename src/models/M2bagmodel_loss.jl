@@ -63,12 +63,12 @@ loss_known_bag(model::M2BagModel, Xb, y, c) = sum(loss_known_bag_vec(model, Xb, 
 
 function loss_unknown(model::M2BagModel, Xb, c) # x::AbstractMatrix
     lmat = mapreduce(y -> loss_known_bag_vec(model, Xb, y, c), hcat, 1:c)
-    # prob = condition(model.qy_x, model.bagmodel(Xb)).α
-    prob = softmax(model.bagmodel(Xb))
+    prob = condition(model.qy_x, model.bagmodel(Xb)).α
+    # prob = softmax(model.bagmodel(Xb))
 
     l = sum(lmat' .* prob)
-    # e = - mean(entropy(condition(model.qy_x, model.bagmodel(Xb))))
-    e = - entropy(prob)
+    e = - mean(entropy(condition(model.qy_x, model.bagmodel(Xb))))
+    # e = - entropy(prob)
     return l + e
 end
 
@@ -83,8 +83,8 @@ end
 
 function loss_classification_crossentropy(model::M2BagModel, Xb, y, c)
     #- logpdf(condition(qy_x, bagmodel(Xb)[:]), y)
-    # Flux.crossentropy(condition(model.qy_x, model.bagmodel(Xb)).α, Flux.onehotbatch(y, 1:c))
-    Flux.logitcrossentropy(model.bagmodel(Xb), Flux.onehotbatch(y, 1:c))
+    Flux.crossentropy(condition(model.qy_x, model.bagmodel(Xb)).α, Flux.onehotbatch(y, 1:c))
+    # Flux.logitcrossentropy(model.bagmodel(Xb), Flux.onehotbatch(y, 1:c))
 end
 
 function semisupervised_loss(model::M2BagModel, xk, y, xu, c, N)
@@ -131,12 +131,12 @@ loss_known_bag_Chamfer(model::M2BagModel, Xb, y, c) = sum(loss_known_bag_vec_Cha
 
 function loss_unknown_Chamfer(model::M2BagModel, Xb, c) # x::AbstractMatrix
     lmat = mapreduce(y -> loss_known_bag_vec_Chamfer(model, Xb, y, c), hcat, 1:c)
-    # prob = condition(model.qy_x, model.bagmodel(Xb)).α
-    prob = softmax(model.bagmodel(Xb))
+    prob = condition(model.qy_x, model.bagmodel(Xb)).α
+    # prob = softmax(model.bagmodel(Xb))
 
     l = sum(lmat' .* prob)
-    # e = - mean(entropy(condition(model.qy_x, model.bagmodel(Xb))))
-    e = - entropy(prob)
+    e = - mean(entropy(condition(model.qy_x, model.bagmodel(Xb))))
+    # e = - entropy(prob)
     return l + e
 end
 

@@ -85,7 +85,7 @@ function M2_bag_constructor(Xk, c; bdim=2, hdim=4, zdim=2, aggregation=Segmented
         Xk,
         d -> Dense(d, hdim),
         aggregation
-    ), Mill.data, Dense(hdim, hdim, activation), Dense(hdim, hdim, activation), Dense(hdim, bdim), Dense(bdim, c))
+    ), Mill.data, Dense(hdim, bdim))
 
     # latent prior - isotropic gaussian
     pz = MvNormal(zeros(Float32, zdim), 1f0)
@@ -93,7 +93,7 @@ function M2_bag_constructor(Xk, c; bdim=2, hdim=4, zdim=2, aggregation=Segmented
     α = softmax(Float32.(ones(c)))
 
     # categorical approximate (not used in the current version)
-    α_qy_x = Chain(Dense(c,c),softmax)
+    α_qy_x = Chain(Dense(bdim, hdim, activation), Dense(hdim, hdim, activation), Dense(hdim, c), softmax)
     qy_x = ConditionalCategorical(α_qy_x)
 
     # decoder
@@ -107,7 +107,7 @@ function M2_bag_constructor(Xk, c; bdim=2, hdim=4, zdim=2, aggregation=Segmented
         qz_xy = ConditionalMvNormal(net_xz)
         return M2Bag(pz, α, bagmodel, qy_x, qz_xy, px_yz)
     elseif type == :dense
-        net_xz = Chain(Dense(xdim+c+c,hdim,activation), Dense(hdim, hdim, activation), SplitLayer(hdim, [zdim,zdim], [identity, safe_softplus]))
+        net_xz = Chain(Dense(xdim+c+bdim,hdim,activation), Dense(hdim, hdim, activation), SplitLayer(hdim, [zdim,zdim], [identity, safe_softplus]))
         qz_xy = ConditionalMvNormal(net_xz)
         return M2BagDense(pz, α, bagmodel, qy_x, qz_xy, px_yz)
     elseif type == :simple
