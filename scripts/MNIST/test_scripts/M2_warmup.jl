@@ -49,9 +49,8 @@ function sample_params()
     batchsize = sample([64, 128, 256])
     agg = sample(["SegmentedMean", "SegmentedMax", "SegmentedMeanMax"])   # HMill aggregation function
     activation = sample(["swish", "relu", "tanh"])                  # activation function
-    type = sample([:vanilla, :dense, :simple])
-    # α = sample([0.1f0, 0.05f0, 0.01f0])
-    α = sample([0.1f0, 1f0, 10f0])
+    type = sample([:vanilla, :dense])
+    α = sample([0.01f0, 0.1f0, 1f0])
     return parameters = (hdim = hdim, zdim = zdim, bdim = bdim, batchsize = batchsize, aggregation = agg, activation = activation, type = type, α = α)
 end
 
@@ -107,8 +106,9 @@ end
 function loss_warmup(Xk, yk, Xu)
     nk = nobs(Xk)
     bk = Flux.Zygote.@ignore [Xk[i] for i in 1:nk]
-    lknown = loss_rec_known(bk, yk)
+    lk = loss_rec_known(bk, yk)
     ce = lclass(Xk, yk)
+    return lk + ce
 end
 @show loss_warmup(minibatch()...)
 
@@ -120,18 +120,24 @@ best_model = deepcopy(model)
 max_train_time = 60*3
 batch = minibatch()
 
+Flux.@epochs 100 begin
+    b = map(i -> minibatch(), 1:10)
+    Flux.train!(loss_warmup, ps, b, opt)
+    @show a = accuracy(Xk, yk)
+end
+
 start_time = time()
 while time() - start_time < max_train_time
 
     b = map(i -> minibatch(), 1:1)
-    Flux.train!(loss_warmup, ps, b, opt)
+    # Flux.train!(loss_warmup, ps, b, opt)
     Flux.train!(lossf, ps, b, opt)
-    @show loss_warmup(batch...)
+    # @show loss_warmup(batch...)
     @show lossf(batch...)
 
     # @show accuracy(Xt, yt)
-    @show a = accuracy(Xk, yk)
-    @show accuracy(Xval, yval)
+    @show accuracy(Xk, yk)
+    @show a = accuracy(Xval, yval)
     if a >= max_accuracy
         max_accuracy = a
         best_model = deepcopy(model)
@@ -153,14 +159,16 @@ function reconstruct(model::M2BagModel, Xb, y, c)
 end
 reconstruct(Xb, y) = reconstruct(model, Xb, y, c)
 
-function plot12(model=model)
+function plot12(model=model; class=nothing)
     rec(Xb, y) = reconstruct(model, Xb, y, c)
     plt = []
     for i in 1:12
         i = sample(1:nobs(Xk))
-        # i = 8
-        Xb, y = Xk[i], ye[i]
-        # Xb, y = Xk[i], 3
+        if isnothing(class)
+            Xb, y = Xk[i], ye[i]
+        else
+            Xb, y = Xk[i], class
+        end
         Xhat = rec(Xb, y)
         p = scatter2(project_data(Xb), color=:3, xlims=(-3, 3), ylims=(-3, 3), axis=([], false), aspect_ratio=:equal, size=(400, 400), ms=project_data(Xb)[3, :] .+ 3 .* 1.5)
         p = scatter2!(Xhat, ms = Xhat[3, :] .+ 3 .* 1.5, opacity=0.7)
@@ -169,3 +177,23 @@ function plot12(model=model)
     p = plot(plt..., layout=(3,4), size=(800,600))
     savefig("plot.png")
 end
+
+function sample_new(model, class, zdim; n=200, classes=classes)
+    z = randn(zdim, n)
+    y = repeat([class], n)
+    yoh = Flux.onehotbatch(y, classes)
+    yz = vcat(z, yoh)
+    rand(condition(model.px_yz, yz))
+end
+
+plt = []
+for i in 1:9
+    x = sample_new(model, 1, 4)
+    p = scatter2(
+        x, xlims=(-3,3), ylims=(-3,3), axis=([], false),
+        aspect_ratio=:equal, size=(400, 400), ms=x[3, :] .+ 3 .* 1.5
+    )
+    push!(plt, p)
+end
+plot(plt..., layout=(3,3), size=(900,900))
+savefig("plot.png")

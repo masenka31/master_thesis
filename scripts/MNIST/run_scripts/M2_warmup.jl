@@ -116,6 +116,7 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
         l_unknown = mean(lunknown.(Xu))
         return l_known + l_unknown
     end
+    loss_rec_known(Xk, yk) = mean(lknown.(Xk, yk))
 
     N = size(project_data(Xk), 2)
     lclass(x, y) = loss_classification_crossentropy(model, x, y, c) * parameters.α * N
@@ -134,6 +135,15 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
     end
     @show lossf(minibatch()...)
 
+    function loss_warmup(Xk, yk, Xu)
+        nk = nobs(Xk)
+        bk = Flux.Zygote.@ignore [Xk[i] for i in 1:nk]
+        lk = loss_rec_known(bk, yk)
+        ce = lclass(Xk, yk)
+        return lk + ce
+    end
+    @show loss_warmup(minibatch()...)
+
     # optimizer and training parameters
     opt = ADAM()
     ps = Flux.params(model)
@@ -142,6 +152,13 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
     best_model = deepcopy(model)
     patience = 0
     max_patience = 200
+
+    @info "Starting warm-up with 100 supervised epochs."
+    Flux.@epochs 100 begin
+        b = map(i -> minibatch(), 1:5)
+        Flux.train!(loss_warmup, ps, b, opt)
+        @show a = accuracy(Xk, yk)
+    end
 
     @info "Starting training with parameters $(parameters)..."
     
@@ -196,16 +213,16 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
         :val_acc => aval,
         :test_acc => at,
         :CM => (cm, df),
-        :modelname => "M2",
+        :modelname => "M2_warmup",
         :model => best_model,
     )
 
     n = savename(savename(parameters), results, "bson")
-    safesave(datadir("experiments", "MNIST", "M2", "seed=$seed", n), results)
+    safesave(datadir("experiments", "MNIST", "M2_warmup", "seed=$seed", n), results)
     @info "Results for seed no. $seed saved."
 end
 
-checkpath = datadir("experiments", "MNIST", "M2", "seed=1")
+checkpath = datadir("experiments", "MNIST", "M2_warmup", "seed=1")
 mkpath(checkpath)
 
 for k in 1:100

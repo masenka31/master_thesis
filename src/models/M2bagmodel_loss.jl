@@ -130,13 +130,11 @@ end
 loss_known_bag_Chamfer(model::M2BagModel, Xb, y, c) = sum(loss_known_bag_vec_Chamfer(model, Xb, y, c))
 
 function loss_unknown_Chamfer(model::M2BagModel, Xb, c) # x::AbstractMatrix
-    lmat = mapreduce(y -> loss_known_bag_vec_Chamfer(model, Xb, y, c), hcat, 1:c)
+    l = map(y -> loss_known_bag_Chamfer(model, Xb, y, c), 1:c)
     prob = condition(model.qy_x, model.bagmodel(Xb)).α
-    # prob = softmax(model.bagmodel(Xb))
 
-    l = sum(lmat' .* prob)
+    l = sum(prob .* l)
     e = - mean(entropy(condition(model.qy_x, model.bagmodel(Xb))))
-    # e = - entropy(prob)
     return l + e
 end
 

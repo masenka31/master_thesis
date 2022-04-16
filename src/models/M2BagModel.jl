@@ -84,7 +84,7 @@ function M2_bag_constructor(Xk, c; bdim=2, hdim=4, zdim=2, aggregation=Segmented
     bagmodel = Chain(reflectinmodel(
         Xk,
         d -> Dense(d, hdim),
-        aggregation
+        BagCount ∘ aggregation
     ), Mill.data, Dense(hdim, bdim))
 
     # latent prior - isotropic gaussian
