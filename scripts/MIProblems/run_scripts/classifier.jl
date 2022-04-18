@@ -31,22 +31,22 @@ end
 function sample_params()
     hdim = sample([8,16,32,64])         # hidden dimension
     ldim = sample([2,4,8,16])           # latent dimension (last layer before softmax layer)
-    batchsize = sample([64, 128, 256])
+    batchsize = sample([32, 64])
     agg = sample(["SegmentedMean", "SegmentedMax", "SegmentedMeanMax"])   # HMill aggregation function
     activation = sample(["relu", "swish", "tanh"])
     return (hdim = hdim, ldim = ldim, batchsize = batchsize, agg = agg, activation = activation)
 end
 
 # for small number of labels, kNN can fail, this does not fail
-function try_catch_knn(DM, yk, y, k)
-    try
-        knn_v, kv = findmax(k -> dist_knn(k, DM, yk, y)[2], 1:k)
-        return knn_v, kv
-    catch e
-        @warn "Caught error, reduced k: $k -> $(k-1)"
-        try_catch_knn(DM, yk, y, k-1)
-    end
-end
+# function try_catch_knn(DM, yk, y, k)
+#     try
+#         knn_v, kv = findmax(k -> dist_knn(k, DM, yk, y)[2], 1:k)
+#         return knn_v, kv
+#     catch e
+#         @warn "Caught error, reduced k: $k -> $(k-1)"
+#         try_catch_knn(DM, yk, y, k-1)
+#     end
+# end
 
 function experiment(dataset::String, pvec, seed, ratios, max_train_time)
     @info "Starting loop for seed no. $seed."
@@ -79,7 +79,8 @@ function experiment(dataset::String, pvec, seed, ratios, max_train_time)
 
     opt = ADAM()
     loss(x, y) = Flux.logitcrossentropy(model(x), y)
-    accuracy(x, y) = round(mean(Flux.onecold(model(x), classes) .== y), digits=3)
+    accuracy(x, y) = round(mean(Flux.onecold(model(x), classes) .== y), digits=5)
+    best_accuracy(x, y) = round(mean(Flux.onecold(best_model(x), classes) .== y), digits=5)
 
     function minibatch()
         ix = sample(1:nobs(Xk), pvec.batchsize)
@@ -88,26 +89,49 @@ function experiment(dataset::String, pvec, seed, ratios, max_train_time)
         xb, yb
     end
 
+    opt = ADAM()
+    best_val_acc = 0
+    best_train_acc = 0
     best_model = deepcopy(model)
-    best_acc = 0
-
+    patience = 0
+    max_patience = 200
+    
     @info "Starting training with parameters $(pvec)..."
+    
     start_time = time()
-
     while time() - start_time < max_train_time
         batches = map(_ -> minibatch(), 1:10)
         Flux.train!(loss, Flux.params(model), batches, opt)
-        acc = accuracy(Xk, yk)
-        # @show accuracy(Xk, yk)
-        if acc >= best_acc
-            # @show accuracy(Xk, yk)
-            # @show accuracy(Xval, yval)
-            # @show accuracy(Xt, yt)
-            best_acc = acc
+        a = accuracy(Xval, yval)
+        ak = accuracy(Xk, yk)
+        if (a > best_val_acc) && (ak >= best_train_acc)
+            @show a
+            @show accuracy(Xt, yt)
             best_model = deepcopy(model)
+            best_train_acc = ak
+            best_val_acc = a
+            patience = 0
+        elseif (a == best_val_acc) && (ak >= best_train_acc)
+            best_train_acc = ak
+            best_val_acc = a
+            best_model = deepcopy(model)
+            print(".")
+            patience += 1
+            if (patience > max_patience) && (best_accuracy(Xk, yk) == 1.0)
+                @info "Patience exceeded, training stopped."
+                break
+            end
+        else
+            print(".")
+            patience += 1
+            if (patience > max_patience) && (best_accuracy(Xk, yk) == 1.0)
+                @info "Patience exceeded, training stopped."
+                break
+            end
         end
     end
     @info "Training finished."
+    model = deepcopy(best_model)
 
     ####################
     ### Save results ###
@@ -115,7 +139,6 @@ function experiment(dataset::String, pvec, seed, ratios, max_train_time)
 
     # results only for the best model
     predict_label(X) = Flux.onecold(best_model(X), classes)
-    best_accuracy(x, y) = round(mean(Flux.onecold(best_model(x), classes) .== y), digits=5)
 
     # accuracy results
     train_acc = best_accuracy(Xk, yk)      # known labels
@@ -124,22 +147,6 @@ function experiment(dataset::String, pvec, seed, ratios, max_train_time)
 
     # confusion matrix on test data
     cm, df = confusion_matrix(classes, Xt, yt, predict_label)
-    # @show df
-
-    # kNN
-    enc = best_model[1:end-1](Xk)
-    enc_v = best_model[1:end-1](Xval)
-    enc_u = best_model[1:end-1](Xu)
-    enc_t = best_model[1:end-1](Xt)
-
-    DMv = pairwise(Euclidean(), enc_v, enc)
-    knn_v, kv = try_catch_knn(DMv, yk, yval, 10)
-
-    # DMu = pairwise(Euclidean(), enc_u, enc)
-    # knn_u, ku = findmax(k -> dist_knn(k, DMu, yk, yu)[2], 1:5)
-
-    DMt = pairwise(Euclidean(), enc_t, enc)
-    knn_t, kt = try_catch_knn(DMt, yk, yt, 10)
 
     results = Dict(
         :modelname => "classifier",
@@ -147,12 +154,6 @@ function experiment(dataset::String, pvec, seed, ratios, max_train_time)
         :train_acc => train_acc,
         :val_acc => val_acc,
         :test_acc => test_acc,
-        :knn_v => knn_v,
-        :kv => kv,
-        #:knn_u => knn_u,
-        #:ku => ku,
-        :knn_t => knn_t,
-        :kt => kt,
         :model => best_model,
         :CM => (cm, df),
         :seed => seed, 
@@ -166,8 +167,7 @@ function experiment(dataset::String, pvec, seed, ratios, max_train_time)
     @info "Results saved."
 end
 
-
-max_train_time = 60*5
+max_train_time = 60*10
 
 for k in 1:500
     parameters = sample_params()

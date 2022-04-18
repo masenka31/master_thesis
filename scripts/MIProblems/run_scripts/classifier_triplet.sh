@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 #SBATCH --partition=cpufast
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=12G
+#SBATCH --mem=15G
 
 RATIOS=$1
 DATASET=$2

@@ -4,6 +4,7 @@ using DrWatson
 using master_thesis
 using master_thesis: dist_knn, encode
 using master_thesis.Models
+using ConditionalDists, Distributions, DistributionsAD
 
 using Flux
 using Distances
@@ -35,11 +36,11 @@ function sample_params()
     hdim = sample([16,32,64])           # hidden dimension
     zdim = sample([2,4,8,16])           # latent dimension
     bdim = sample([2,4,8,16])           # the dimension ob output of the HMill model
-    batchsize = sample([64, 128, 256])
+    batchsize = sample([32, 64])
     agg = sample(["SegmentedMean", "SegmentedMax", "SegmentedMeanMax"])   # HMill aggregation function
     activation = sample(["swish", "relu", "tanh"])                  # activation function
     type = sample([:vanilla, :dense, :simple])
-    α = sample([0.1f0, 1f0, 10f0, 100f0])
+    α = sample([0.1f0, 1f0, 10f0])
     return parameters = (hdim = hdim, zdim = zdim, bdim = bdim, batchsize = batchsize, aggregation = agg, activation = activation, type = type, α = α)
 end
 
@@ -71,7 +72,7 @@ function experiment(dataset::String, parameters, seed, ratios, max_train_time)
 
     # accuracy
     function accuracy(model::M2BagModel, X, y, classes)
-        ynew = Flux.onecold(model.bagmodel(X), classes)
+        ynew = Flux.onecold(condition(model.qy_x, model.bagmodel(X)).α, classes)
         mean(ynew .== y)
     end
     accuracy(X, y) = accuracy(model, X, y, classes)
@@ -151,7 +152,7 @@ function experiment(dataset::String, parameters, seed, ratios, max_train_time)
     @info "Max accuracy = $max_accuracy."
 
     # predict_label(X) = Flux.onecold(model.bagmodel(X), classes)
-    predict_label(X) = Flux.onecold(best_model.bagmodel(X), classes)
+    predict_label(X) = Flux.onecold(condition(best_model.qy_x, best_model.bagmodel(X)).α, classes)
 
     # cm, df = confusion_matrix(classes, Xk, yk, predict_label)
     cm, df = confusion_matrix(classes, Xt, yt, predict_label)
@@ -162,18 +163,6 @@ function experiment(dataset::String, parameters, seed, ratios, max_train_time)
     au = best_accuracy(Xu, yu)
     at = best_accuracy(Xt, yt)
     aval = best_accuracy(Xval, yval)
-
-    # encoding kNN
-    enc = best_model.bagmodel(Xk)
-    enc_v = best_model.bagmodel(Xval)
-    enc_u = best_model.bagmodel(Xu)
-    enc_t = best_model.bagmodel(Xt)
-
-    DMv = pairwise(Euclidean(), enc_v, enc)
-    knn_v, kv = try_catch_knn(DMv, yk, yval, 10)
-
-    DMt = pairwise(Euclidean(), enc_t, enc)
-    knn_t, kt = try_catch_knn(DMt, yk, yt, 10)
 
     @info "Results calculated."
 
