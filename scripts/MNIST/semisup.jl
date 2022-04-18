@@ -1,17 +1,23 @@
 using NearestNeighbors
 
+function classify_unknown(model, Xk, yk, Xu, yu, threshold, classes)
+    probs = softmax(model(Xu))
+    b = map(x -> any(x .> threshold), eachcol(probs))
+    ixs = (1:nobs(Xu))[b]
+    ixs_left = setdiff(1:nobs(Xu), ixs)
+    
+    Xknew = reindex(Xu, ixs)
+    yknew = Flux.onecold(model(Xknew), classes)
+    
+    @info "Accuracy of inferred labels: $(mean(yu[ixs] .== yknew))."
 
-# enc = embedding(Xk)
-# tree = BruteTree(enc)
+    Xunew = reindex(Xu, ixs_left)
+    yunew = yu[ixs_left]
 
-# enc_unknown = embedding(Xu)
-# idxs, dists = knn(tree, enc_unknown, 10)
+    return Xknew, yknew, Xunew, yunew, ixs
+end
 
-# b = map(idx -> length(unique(yk[idx])) == 1, idxs) |> BitVector
-# ixs = (1:nobs(Xu))[b]
-# accuracy(reindex(Xu, ixs), yu[ixs])
-
-function classify_unknown(model, Xk, yk, Xu, yu, k, classes)
+function classify_unknown_knn(model, Xk, yk, Xu, yu, k, classes)
     embedding(X) = Mill.data(model[1](X))
 
     enc = embedding(Xk)
@@ -51,7 +57,7 @@ function uniform_minibatch()
     xb, yb
 end
 
-function train_classifier(hdim, batchsize, activation, aggregation, Xk, yk, Xval, yval, Xu, yu; k, max_train_time = 60*5)
+function train_classifier(hdim, batchsize, activation, aggregation, thr, Xk, yk, Xval, yval, Xu, yu; k, max_train_time = 60*5)
     # prepare data
     classes = sort(unique(yk))
     Xtrain = Xk
@@ -97,10 +103,12 @@ function train_classifier(hdim, batchsize, activation, aggregation, Xk, yk, Xval
     predict_label(X) = Flux.onecold(model(X), classes)
     opt = ADAM()
 
-    @info "Starting training..."    
+    @info "Starting training..."
     yval_oh = Flux.onehotbatch(yval, classes)
     best_val_acc = 0
     best_model = deepcopy(model)
+    patience = 0
+    max_patience = 1000
 
     start_time = time()
     while time() - start_time < max_train_time
@@ -115,13 +123,20 @@ function train_classifier(hdim, batchsize, activation, aggregation, Xk, yk, Xval
 
             best_val_acc = val_acc
             best_model = deepcopy(model)
+            patience = 0
         else
             print(".")
+            patience += 1
+            if patience > max_patience
+                @info "Patience exceeded, training stopped."
+                break
+            end
         end
     end
     @info "Training finished."
 
-    Xknew, yknew, Xunew, yunew = classify_unknown(model, Xk, yk, Xu, yu, k, classes)
+    Xknew, yknew, Xunew, yunew = classify_unknown(best_model, Xk, yk, Xu, yu, thr, classes)
+    # Xknew, yknew, Xunew, yunew = classify_unknown_knn(model, Xk, yk, Xu, yu, k, classes)
 
     return cat(Xk, Xknew), vcat(yk, yknew), Xunew, yunew, best_model, best_val_acc
 end
