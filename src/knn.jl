@@ -47,7 +47,7 @@ my_findmax(a) = my_findmax(a, :)
 Given number of neighbors `k` and a distance matrix of size (# test samples, # train samples),
 and train and test labels, returns predicted labels and accuracy of predictions.
 """
-function dist_knn(k, distance_matrix, ytrain, ytest)
+function dist_knn(k, distance_matrix, ytrain, ytest; display=false)
     y_predicted = similar(ytest)
     for i in 1:length(ytest)
         # get indexes of nearest neighbors
@@ -60,9 +60,11 @@ function dist_knn(k, distance_matrix, ytrain, ytest)
 
         j = k + 1
 
-        length(mx) > 1 ? print("Increasing ") : nothing
+        if display
+            length(mx) > 1 ? print("Increasing ") : nothing
+        end
         while length(mx) > 1
-            print(".")
+            display ? print(".") : nothing
             neighbors_ix = partialsortperm(distance_matrix[i,:], 1:j)
             neighbors_l = ytrain[neighbors_ix]
             c = countmap(neighbors_l)

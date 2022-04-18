@@ -8,8 +8,8 @@ to get label predictions.
 
 Returns the confusion matrix as well as a dataframe with accuracy per class.
 """
-confusion_matrix(classes, X, y, predict_labels::Function) = confusion_matrix(classes, X, y, predict_labels(X))
-function confusion_matrix(classes, X, y, ynew::Vector)
+confusion_matrix(classes, X, y, predict_labels::Function) = confusion_matrix(classes, y, predict_labels(X))
+function confusion_matrix(classes, y, ynew::Vector)
     # ynew = predict_labels(X)
 
     # calculate the confusion matrix

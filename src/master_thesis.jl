@@ -16,6 +16,7 @@ include("kl_divergence.jl")
 include("confusion_matrix.jl")
 
 include("models/Models.jl")
+include("gvma/gvma.jl")
 
 export train_test_split
 export scatter2, scatter2!, scatter3, scatter3!
@@ -24,7 +25,7 @@ export kl_divergence
 export safe_softplus
 export split_semisupervised_data, split_semisupervised_balanced
 export validation_data
-export confusion_matrix
+export dist_knn, confusion_matrix
 export project_data
 export reindex, seqids2bags
 
