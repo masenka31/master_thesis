@@ -2,7 +2,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --partition=cpu
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=30G
+#SBATCH --mem=54G
 
 MODEL=$1
 RATIOS=$2

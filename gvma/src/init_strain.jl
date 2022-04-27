@@ -1,8 +1,6 @@
 using DrWatson
 @quickactivate
 
-using master_thesis.gvma
-
 using JsonGrinder
 using Mill
 using Statistics

@@ -15,6 +15,9 @@ result_type(dist::Chamfer, x, y) = Float32
 
 include(srcdir("point_cloud.jl"))
 
+r = parse(Float64, ARGS[1])
+full = parse(Bool, ARGS[2])
+
 data = load_mnist_point_cloud()
 
 function calculate_chamfer(data, r, ratios, full, seed)
@@ -72,23 +75,22 @@ function calculate_chamfer(data, r, ratios, full, seed)
     safesave(datadir("experiments", "MNIST", "chamfer_knn", "seed=$seed", nm), results)
 end
 
-for seed in 1:5
-    r, full = 0.002, false
+Threads.@threads for seed in 1:5
     ratios = (r, 0.5-r, 0.5)
     calculate_chamfer(data, r, ratios, full, seed)
 end
-for seed in 1:5
-    r, full = 0.01, false
-    ratios = (r, 0.5-r, 0.5)
-    calculate_chamfer(data, r, ratios, full, seed)
-end
-for seed in 1:5
-    r, full = 0.002, true
-    ratios = (r, 0.5-r, 0.5)
-    calculate_chamfer(data, r, ratios, full, seed)
-end
-for seed in 1:5
-    r, full = 0.01, true
-    ratios = (r, 0.5-r, 0.5)
-    calculate_chamfer(data, r, ratios, full, seed)
-end
+# Threads.@threads for seed in 1:5
+#     r, full = 0.05, true
+#     ratios = (r, 0.5-r, 0.5)
+#     calculate_chamfer(data, r, ratios, full, seed)
+# end
+# Threads.@threads for seed in 1:5
+#     r, full = 0.1, false
+#     ratios = (r, 0.5-r, 0.5)
+#     calculate_chamfer(data, r, ratios, full, seed)
+# end
+# Threads.@threads for seed in 1:5
+#     r, full = 0.1, true
+#     ratios = (r, 0.5-r, 0.5)
+#     calculate_chamfer(data, r, ratios, full, seed)
+# end

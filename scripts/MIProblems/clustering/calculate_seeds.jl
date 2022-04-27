@@ -1,24 +1,31 @@
 using DrWatson
 @quickactivate
 
+# const nn = 3
+
 # include source files (this file actually calls another file in MNIST scripts folder)
 include(scriptsdir("MIProblems", "clustering", "cluster_src.jl"))
 include(srcdir("point_cloud.jl"))
 include(srcdir("mill_data.jl"))
 
 function embeddingfun(modelname, model)
-    if modelname in ["classifier", "classifier_triplet"]
+    if modelname in ["classifier", "classifier_triplet", "self_classifier"]
         return x -> Mill.data(model[1](x))
     elseif modelname == "M2"
-        return x -> Mill.data(model.bagmodel(x))
+        return x -> model.bagmodel(x)
+    elseif modelname == "self_arcface"
+        return x -> model(x)
     end
 end
 
 # load data tables
 include(scriptsdir("MIProblems", "run_scripts", "results_animals.jl"))
+par = Dict("classifier" => classifier, "classifier_triplet" => triplet, "M2" => m2, "self_classifier" => self, "self_arcface" => arc)
 
-par = Dict("classifier" => classifier, "classifier_triplet" => triplet, "M2" => m2)
-r, modelname, dataset = 0.2, "classifier_triplet", "animals"
+modelname = ARGS[1]
+r = parse(Float64, ARGS[2])
+dataset = "animals_negative"
+# r, modelname, dataset = 0.05, "classifier_triplet", "animals_negative"
 ratios = (r, 0.5-r, 0.5)
 models, seeds, val_accs, test_accs, params = load_models(par, dataset, modelname, r)
 R = calculate_clustering_results(models, seeds, val_accs, test_accs, params, dataset, ratios, modelname, r)
@@ -47,4 +54,3 @@ results_dict = Dict(
 )
 
 safesave(datadir("experiments", "MIProblems", "clustering", dataset, modelname, savename(results_dict, "bson")), results_dict)
-sort!(cdf, :accuracy, rev=true)

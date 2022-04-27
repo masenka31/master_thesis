@@ -13,6 +13,7 @@ using UMAP
 using UMAP: UMAP.transform
 using Distributed
 using master_thesis: dist_knn
+using ThreadTools
 
 include(scriptsdir("MNIST", "run_scripts", "results.jl"))
 include(srcdir("point_cloud.jl"))
@@ -28,18 +29,24 @@ else
 end
 
 # load the model
-par = Dict("classifier" => df_c, "classifier_triplet" => df_tr, "M2" => df_m)
-models, seeds, val_accs, test_accs, params = load_models(par, modelname, r, fl)
+par = Dict(
+    "classifier" => df_c,
+    "classifier_triplet" => df_tr,
+    "M2" => df_m,
+    "M2_warmup" => df_mw,
+    "self_classifier" => df_self
+)
+models, seeds, val_accs, test_accs, params = load_models(par, modelname, r, fl, 5)
 
 # ininialize data
 data = load_mnist_point_cloud()
 ratios = (r, 0.5-r, 0.5)
 
 function embeddingfun(modelname, model)
-    if modelname in ["classifier", "classifier_triplet"]
+    if modelname in ["classifier", "classifier_triplet", "self_classifier"]
         return x -> Mill.data(model[1](x))
-    elseif modelname == "M2"
-        return x -> Mill.data(model.bagmodel(x))
+    elseif modelname in ["M2", "M2_warmup"]
+        return x -> model.bagmodel(x)
     end
 end
 
@@ -88,8 +95,8 @@ function calculate_clustering_results(models, seeds, val_accs, test_accs, params
         p = plot_wrt_labels(emb_test, yt, classes; ms=2, legend=:outerright)
         p = plot_wrt_labels!(p, emb, yk, classes; marker=:square, markerstrokewidth=1)
         # p = plot_wrt_labels!(p, emb_val1, yval, classes; marker=:diamond, markerstrokewidth=1)
-        mkpath(plotsdir("MNIST", modelname))
-        savefig(plotsdir("MNIST", modelname, "train_umap_r=$(r)_full=$(fl)_seed=$(seed)_val_acc=$(val_accs[i])_test_acc=$(test_accs[i]).png"))
+        mkpath(plotsdir("MNIST", modelname, "seed=$(seed)"))
+        savefig(plotsdir("MNIST", modelname, "seed=$(seed)", "train_umap_r=$(r)_full=$(fl)_val_acc=$(val_accs[i])_test_acc=$(test_accs[i]).png"))
 
         # UMAP model on test data
         ts_model = UMAP_(enct, 2, n_neighbors=nn)
@@ -99,7 +106,7 @@ function calculate_clustering_results(models, seeds, val_accs, test_accs, params
 
         p = plot_wrt_labels(emb2, yt, classes; ms=2, legend=:outerright)
         p = plot_wrt_labels!(p, emb_train, yk, classes; marker=:square, markerstrokewidth=1)
-        savefig(plotsdir("MNIST", modelname, "test_umap_r=$(r)_full=$(fl)_seed=$(seed)_val_acc=$(val_accs[i])_test_acc=$(test_accs[i]).png"))
+        savefig(plotsdir("MNIST", modelname, "seed=$seed", "test_umap_r=$(r)_full=$(fl)_val_acc=$(val_accs[i])_test_acc=$(test_accs[i]).png"))
 
         @info "UMAP embeddings calculated and plots saved."
 
@@ -113,35 +120,35 @@ function calculate_clustering_results(models, seeds, val_accs, test_accs, params
 
         # use parallel computing on number of clusters ks
         # load the same number of threads as length of ks
-            
+
         # results on simple encoding
         DM1 = pairwise(Euclidean(), enct)
-        result_means = pmap(k -> cluster(enc, enct, DM1, ye, yet, kmeans, k, seed; type = "encoding"), ks)
-        result_medoids = pmap(k -> cluster(enc, enct, DM1, ye, yet, kmedoids, k, seed; type = "encoding"), ks)
+        result_means = tmap(k -> cluster(enc, enct, DM1, ye, yet, kmeans, k, seed; type = "encoding"), 3, ks)
+        result_medoids = tmap(k -> cluster(enc, enct, DM1, ye, yet, kmedoids, k, seed; type = "encoding"), 3, ks)
         # result_hs = pmap(k -> cluster(enc, enct, DM1, ye, yet, hierarchical_single, k, seed; type = "encoding"), ks)
-        result_ha = pmap(k -> cluster(enc, enct, DM1, ye, yet, hierarchical_average, k, seed; type = "encoding"), ks)
+        result_ha = tmap(k -> cluster(enc, enct, DM1, ye, yet, hierarchical_average, k, seed; type = "encoding"), 3, ks)
 
         @info "Clustering results on HMill encoding calculated."
 
         # results on UMAP calculated on train data
         DM2 = pairwise(Euclidean(), emb_test)
-        result_means_umap_train = pmap(k -> cluster(emb, emb_test, DM2, ye, yet, kmeans, k, seed; type = "train_embedding"), ks)
-        result_medoids_umap_train = pmap(k -> cluster(emb, emb_test, DM2, ye, yet, kmedoids, k, seed; type = "train_embedding"), ks)
+        result_means_umap_train = tmap(k -> cluster(emb, emb_test, DM2, ye, yet, kmeans, k, seed; type = "train_embedding"), 3, ks)
+        result_medoids_umap_train = tmap(k -> cluster(emb, emb_test, DM2, ye, yet, kmedoids, k, seed; type = "train_embedding"), 3, ks)
         # result_hs_umap_train = pmap(k -> cluster(emb, emb_test, DM2, ye, yet, hierarchical_single, k, seed; type = "train_embedding"), ks)
-        result_ha_umap_train = pmap(k -> cluster(emb, emb_test, DM2, ye, yet, hierarchical_average, k, seed; type = "train_embedding"), ks)
+        result_ha_umap_train = tmap(k -> cluster(emb, emb_test, DM2, ye, yet, hierarchical_average, k, seed; type = "train_embedding"), 3, ks)
 
         @info "Clustering results on train embedding calculated."
 
         # results on UMAP calculated on test data
         DM3 = pairwise(Euclidean(), emb2)
-        result_means_umap_test = pmap(k -> cluster(emb_train, emb2, DM3, ye, yet, kmeans, k, seed; type = "test_embedding"), ks)
-        result_medoids_umap_test = pmap(k -> cluster(emb_train, emb2, DM3, ye, yet, kmedoids, k, seed; type = "test_embedding"), ks)
+        result_means_umap_test = tmap(k -> cluster(emb_train, emb2, DM3, ye, yet, kmeans, k, seed; type = "test_embedding"), 3, ks)
+        result_medoids_umap_test = tmap(k -> cluster(emb_train, emb2, DM3, ye, yet, kmedoids, k, seed; type = "test_embedding"), 3, ks)
         # result_hs_umap_test = pmap(k -> cluster(emb_train, emb2, DM3, ye, yet, hierarchical_single, k, seed; type = "test_embedding"), ks)
-        result_ha_umap_test = pmap(k -> cluster(emb_train, emb2, DM3, ye, yet, hierarchical_average, k, seed; type = "test_embedding"), ks)
+        result_ha_umap_test = tmap(k -> cluster(emb_train, emb2, DM3, ye, yet, hierarchical_average, k, seed; type = "test_embedding"), 3, ks)
 
-        result_means_umap_test = pmap(k -> cluster(emb_train, emb2, DM3, ye, yet, kmeans, k, seed; type = "test_embedding"), ks)
-        result_medoids_umap_test = pmap(k -> cluster(emb_train, emb2, DM3, ye, yet, kmedoids, k, seed; type = "test_embedding"), ks)
-        result_ha_umap_test = pmap(k -> cluster(emb_train, emb2, DM3, ye, yet, hierarchical_average, k, seed; type = "test_embedding"), ks)
+        result_means_umap_test = tmap(k -> cluster(emb_train, emb2, DM3, ye, yet, kmeans, k, seed; type = "test_embedding"), 3, ks)
+        result_medoids_umap_test = tmap(k -> cluster(emb_train, emb2, DM3, ye, yet, kmedoids, k, seed; type = "test_embedding"), 3, ks)
+        result_ha_umap_test = tmap(k -> cluster(emb_train, emb2, DM3, ye, yet, hierarchical_average, k, seed; type = "test_embedding"), 3, ks)
 
         @info "Clustering results on test embedding calculated."
 

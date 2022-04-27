@@ -211,7 +211,7 @@ mkpath(checkpath)
 for k in 1:100
     parameters = sample_params()
     if check_params(checkpath, parameters, r, full)
-        for seed in 1:5
+        Threads.@threads for seed in 1:5
             train_and_save(data, parameters, seed, ratios, full, max_train_time)
         end
         break

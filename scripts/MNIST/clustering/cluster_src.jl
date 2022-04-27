@@ -61,7 +61,41 @@ function map_clustering_advanced(enc_train, enc_test, ytrain, assign, k=3)
 
     return ynew
 end
+# function map_clustering_advanced(enc_train, enc_test, ytrain, assign, k=3)
+#     classes = sort(unique(ytrain))
 
+#     means = []
+#     labels = []
+#     for c in classes
+#         e = enc_train[:, ytrain .== c]
+#         d = pairwise(Euclidean(), e)
+#         h = hclust(d, linkage=:average)
+#         yn = cutree(h, k=k)
+#         un = countmap(yn)
+#         fkeys = filter(key -> un[key] > 3, keys(un))
+#         b = map(x -> any(x .== fkeys), yn)
+
+#         fenc = e[:, b]
+#         ynnew = yn[b]
+#         m = map(i -> mean(fenc[:, ynnew .== i], dims=2), collect(fkeys))
+#         push!(means, m)
+#         push!(labels, repeat([c], k))
+#     end
+
+#     means = vcat(means...)
+#     labels = vcat(labels...)
+
+#     ynew = similar(assign)
+
+#     for i in sort(unique(assign))
+#         x = enc_test[:, assign .== i]
+#         m = mean(x, dims=2)
+#         min_ix = findmin(x -> Flux.mse(m, x), means)[2]
+#         ynew[assign .== i] .= labels[min_ix]
+#     end
+
+#     return ynew
+# end
 
 # what about for hierarchical clustering?
 hierarchical_single(DM, k) = cutree(hclust(DM, linkage=:single), k=k)
@@ -160,10 +194,10 @@ function plot_wrt_labels!(p, X, y, classes; kwargs...)
     return p
 end
 
-function load_model(par, modelname, r, full)
+function load_model(par, modelname, r, full, seed)
     d = filter(:r => ri -> ri == r, filter(:full => fi -> fi == full, par[modelname]))
     nm = savename(d.parameters[1])
-    modelpath = datadir("experiments", "MNIST", modelname)
+    modelpath = datadir("experiments", "MNIST", modelname, "seed=$seed")
     files = readdir(modelpath)
     ixs = findall(f -> (occursin(nm, f) && occursin("r=$r", f) && occursin("full=$full", f)), files)
     models = map(x -> BSON.load(joinpath(modelpath, files[x]))[:model], ixs)
@@ -173,23 +207,35 @@ function load_model(par, modelname, r, full)
     model = models[ix]
     return model, ix, d.parameters
 end
-function load_models(par, modelname, r, full)
+function load_models(par, modelname, r, full, max_seed)
     d = filter(:r => ri -> ri == r, filter(:full => fi -> fi == full, par[modelname]))
     nm = savename(d.parameters[1])
-    modelpath = datadir("experiments", "MNIST", modelname)
-    files = readdir(modelpath)
+    modelpathf(seed) = datadir("experiments", "MNIST", modelname, "seed=$seed")
+    files = mapreduce(seed -> readdir(modelpathf(seed)), vcat, 1:max_seed)
     ixs = findall(f -> (occursin(nm, f) && occursin("r=$r", f) && occursin("full=$full", f)), files)
 
-    models = map(x -> BSON.load(joinpath(modelpath, files[x]))[:model], ixs)
-    val_accs = map(x -> BSON.load(joinpath(modelpath, files[x]))[:val_acc], ixs)
-    test_accs = map(x -> BSON.load(joinpath(modelpath, files[x]))[:test_acc], ixs)
-    seeds = map(x -> BSON.load(joinpath(modelpath, files[x]))[:seed], ixs)
+    files = sort!(files[ixs])
+    loaded_files = map((f, i) -> BSON.load(joinpath(modelpathf(i), f)), files, 1:max_seed)
+    models = map(i -> loaded_files[i][:model], 1:max_seed)
+    val_accs = map(i -> loaded_files[i][:val_acc], 1:max_seed)
+    test_accs = map(i -> loaded_files[i][:test_acc], 1:max_seed)
+    seeds = map(i -> loaded_files[i][:seed], 1:max_seed)
     
     return models, seeds, val_accs, test_accs, d.parameters
 end
 
 
 using master_thesis: dist_knn
+
+function try_catch_knn(k, DM, yk, y)
+    try
+        knn_v, kv = findmax(k -> dist_knn(k, DM, yk, y)[2], 1:k)
+        return knn_v, kv
+    catch e
+        @warn "Caught error, reduced k: $k -> $(k-1)"
+        try_catch_knn(k-1, DM, yk, y)
+    end
+end
 
 """
     knn(k::Int, enc, enc_val, enc_test, y, yval, yt; kmax=15)
@@ -200,7 +246,8 @@ on validation data.
 function knn(enc, enc_val, enc_test, y, yval, yt; kmax=15, type="")
     dm_val = pairwise(Euclidean(), enc_val, enc)
     # @info "Finding best k."
-    val_acc, kbest = findmax(k -> dist_knn(k, dm_val, y, yval)[2], 1:kmax)
+    # val_acc, kbest = findmax(k -> dist_knn(k, dm_val, y, yval)[2], 1:kmax)
+    val_acc, kbest = try_catch_knn(kmax, dm_val, y, yval)
     # @info "Best k is $kbest."
 
     dm_test = pairwise(Euclidean(), enc_test, enc)
@@ -222,7 +269,8 @@ end
 # dm_val = pairwise(Euclidean(), enc_val, enc)
 # dm_test = pairwise(Euclidean(), enc_test, enc)
 function knn(dm_val, dm_test, y, yval, yt; kmax=15, type="")
-    val_acc, kbest = findmax(k -> dist_knn(k, dm_val, y, yval)[2], 1:kmax)  
+    # val_acc, kbest = findmax(k -> dist_knn(k, dm_val, y, yval)[2], 1:kmax)  
+    val_acc, kbest = try_catch_knn(kmax, dm_val, y, yval)
     ynew, test_acc = dist_knn(kbest, dm_test, y, yt)
     
     # return kbest, val_acc, test_acc

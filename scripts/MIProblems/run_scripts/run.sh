@@ -12,8 +12,8 @@ if [ ! -d "$LOG_DIR" ]; then
 	mkdir $LOG_DIR
 fi
 
-# for ratios in 0.05 0.1 0.15 0.2
-for ratios in 0.15 0.2
+# for ratios in 0.05 0.1
+for ratios in 0.05 0.1 0.15 0.2
 do
     # submit to slurm
     sbatch \
