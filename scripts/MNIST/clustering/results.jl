@@ -19,6 +19,7 @@ df = collect_results(datadir("experiments", "MNIST", "clustering"), subfolders=t
 classifier = df[df.modelname .== "classifier", :]
 triplet = df[df.modelname .== "classifier_triplet", :]
 self = df[df.modelname .== "self_classifier", :]
+arc = df[df.modelname .== "self_arcface", :]
 m2 = df[df.modelname .== "M2", :]
 m2_warmup = df[df.modelname .== "M2_warmup", :]
 
@@ -31,16 +32,50 @@ end
 d = get_combined(classifier, 0.002, false)
 pretty_table(d, crop=:none, nosubheader=true, formatters = ft_round(3))
 
-modelnames = ["classifier", "classifier_triplet", "self_classifier", "M2", "M2_warmup"]
-nice_modelnames = ["classifier", "classifier + triplet", "self-supervised classifier", "M2 model", "M2 model + warm-up"]
+modelnames = ["classifier", "classifier_triplet", "M2", "M2_warmup", "self_classifier", "self_arcface"]
+nice_modelnames = ["classifier", "classifier + triplet", "M2 model", "M2 model + warm-up", "self-supervised classifier", "self-supervised ArcFace"]
 
-f = filter(:full => f -> f == false, df)
+### with kNN
+placeholder = []
+f = filter(:full => f -> f == true, df)
 res = DataFrame[]
 for m in modelnames
     d = f[f.modelname .== m, :].combined_df
     for row in d
         dfirst = first(sort(row, :accuracy, rev=true)) |> DataFrame
-        res = vcat(res, dfirst[:, [:modelname, :method, :type, :k, :accuracy]])
+        res = vcat(res, dfirst[:, [:modelname, :method, :type, :accuracy]])
+    end
+end
+res = vcat(res...)
+rvec = repeat([0.002, 0.01, 0.05, 0.1], 6)
+res.r = rvec
+sort!(res, :r)
+nicenames = repeat(nice_modelnames, 4)
+res.modelname = nicenames
+res.type[res.type .== "test_embedding"] .= "test embedding"
+res.type[res.type .== "train_embedding"] .= "train embedding"
+res.method[res.method .== "kmeans"] .= "k-means"
+res.method[res.method .== "kmedoids"] .= "k-medoids"
+res.method[res.method .== "hierarchical_average"] .= "hierarchical"# (average)"
+
+pretty_table(res, nosubheader=true, formatters = ft_round(3), hlines=[0,1,7,13,19,25], crop=:none)
+# this is the input table into master's thesis
+pretty_table(res, nosubheader=true, formatters = ft_round(3), hlines=[0,1,7,13,19,25], backend=:latex, tf = tf_latex_booktabs)
+
+r1 = res
+r2 = res
+r = hcat(r1, r2[:, [:method, :type, :accuracy]], makeunique=true)
+pretty_table(r, nosubheader=true, formatters = ft_round(3), hlines=[0,1,7,13,19,25], backend=:latex, tf = tf_latex_booktabs)
+
+### without kNN
+f = filter(:full => f -> f == true, df)
+res = DataFrame[]
+for m in modelnames
+    d = f[f.modelname .== m, :].combined_df
+    for row in d
+        rowf = filter(:method => m -> m != "kNN", row)
+        dfirst = first(sort(rowf, :accuracy, rev=true)) |> DataFrame
+        res = vcat(res, dfirst[:, [:modelname, :method, :type, :accuracy, :randindex, :MI, :k]])
     end
 end
 res = vcat(res...)
@@ -55,8 +90,52 @@ res.method[res.method .== "kmeans"] .= "k-means"
 res.method[res.method .== "kmedoids"] .= "k-medoids"
 res.method[res.method .== "hierarchical_average"] .= "hierarchical (average)"
 
+pretty_table(res, nosubheader=true, formatters = ft_round(3), hlines=[0,1,6,11,16,21], crop=:none)
 # this is the input table into master's thesis
 pretty_table(res, nosubheader=true, formatters = ft_round(3), hlines=[0,1,6,11,16,21], backend=:latex, tf = tf_latex_booktabs)
+
+### Plots the results?
+const markers = [:circle, :square, :utriangle, :dtriangle, :diamond, :hexagon, :star4]
+const colorvec = [:blue4, :green4, :darkorange, :purple3, :red3, :grey, :sienna4, :cyan]
+
+function plot_results(table; savename = nothing, kwargs...)
+    mi = minimum(table.accuracy)
+    r = sort(unique(table.r)) .* 100
+
+    p = plot(;
+        legend=:bottomright, ylims=(mi-0.01, 1.005), size=(400, 600), xticks=r,
+        xlabel="% of known labels", ylabel="accuracy", labelfontsize=10,
+        kwargs...
+    )
+    for i in 1:length(nice_modelnames)
+        t = table[table.modelname .== nice_modelnames[i], :]
+        @show t
+        p = plot!(r, t.accuracy, msc = :auto, m=markers[i], label = nice_modelnames[i], ms=5, color=colorvec[i], lw=1.5)
+    end
+    if isnothing(savename)
+        savefig("plot.png")
+    else
+        # wsave(plotsdir("gvma", "$savename.png"), p)
+        wsave(plotsdir("MNIST", "$savename.svg"), p)
+    end
+    return p
+end
+
+p1 = plot_results(r1)
+p2 = plot_results(r2)
+pc = plot(
+    p1, p2, layout=(1,2), size=(700,500), title=["4 digits" "10 digits"],
+    legend=[:bottomleft :none], titlefontsize=10, ylims=(0.55,1.0)
+)
+wsave(plotsdir("MNIST","cluster_accuracy_comp.svg"),pc)
+
+pfalse = plot_results(res)
+ptrue = plot_results(res)
+plot(
+    pfalse, ptrue, layout=(1,2), size=(700,500), title=["Classifier" "Classifier + Triplet"],
+    legend=[:bottomleft :none], titlefontsize=10, ylims=(0.4,1.0)
+)
+savefig("plot.png")
 
 # this is just for nice visualization
 for (r1, r2, r3, r4, r5) in zip(eachrow(classifier), eachrow(triplet), eachrow(self), eachrow(m2), eachrow(m2_warmup))

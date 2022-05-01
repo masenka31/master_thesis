@@ -20,13 +20,13 @@ include(srcdir("point_cloud.jl"))
 include(scriptsdir("MNIST", "clustering", "cluster_src.jl"))
 
 ### ARGS
-if isempty(ARGS)
-    modelname, r, fl = "classifier", 0.002, false
-else
+# if isempty(ARGS)
+#     modelname, r, fl = "classifier", 0.002, false
+# else
     modelname = ARGS[1]
     r = parse(Float64, ARGS[2])
     fl = parse(Bool, ARGS[3])
-end
+# end
 
 # load the model
 par = Dict(
@@ -34,9 +34,10 @@ par = Dict(
     "classifier_triplet" => df_tr,
     "M2" => df_m,
     "M2_warmup" => df_mw,
-    "self_classifier" => df_self
+    "self_classifier" => df_self,
+    "self_arcface" => df_arc
 )
-models, seeds, val_accs, test_accs, params = load_models(par, modelname, r, fl, 5)
+models, seeds, val_accs, test_accs, params = load_models_arcface(par, modelname, r, fl, 5)
 
 # ininialize data
 data = load_mnist_point_cloud()
@@ -47,6 +48,8 @@ function embeddingfun(modelname, model)
         return x -> Mill.data(model[1](x))
     elseif modelname in ["M2", "M2_warmup"]
         return x -> model.bagmodel(x)
+    elseif modelname == "self_arcface"
+        return x -> model(x)
     end
 end
 
@@ -54,6 +57,7 @@ function calculate_clustering_results(models, seeds, val_accs, test_accs, params
     results_over_seeds = DataFrame[]
 
     for (i, seed) in enumerate(seeds)
+        @info "Calculating seed $seed."
         if fl
             Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(data.data, data.bag_labels; ratios=ratios, seed=seed)
         else

@@ -57,11 +57,14 @@ results = hcat(
 
 pretty_table(results[:, Not(:parameters)], nosubheader=true, formatters = ft_round(3), hlines=vcat(0, 1, 6, 11, 16, 21, 26), crop=:none)
 pretty_table(sort(results[:, Not(:parameters)], :r), nosubheader=true, formatters = ft_round(3), hlines=vcat(0, 1, 6, 11, 16, 21, 26), crop=:none)
+df_pretty = sort(results[:, Not([:parameters, :train_acc_std, :val_acc_std, :test_acc_std])], :r)
+df_pretty.r .*= 100
+pretty_table(df_pretty, nosubheader=true, formatters = ft_round(3), hlines=vcat(0, 1, 6, 11, 16, 21, 26), backend=:latex, tf = tf_latex_booktabs)
 
 const markers = [:circle, :square, :utriangle, :dtriangle, :diamond, :hexagon, :star4]
 const colorvec = [:blue4, :green4, :darkorange, :purple3, :red3, :grey, :sienna4, :cyan]
 
-function plot_results(table; savename = nothing)
+function plot_results(table; savename = nothing, kwargs...)
     mi = minimum(table.test_acc_mean)
     r = table[1:5, :r] .* 100
 
@@ -69,8 +72,8 @@ function plot_results(table; savename = nothing)
         r, table[1:5, :test_acc_mean], msc = :auto, m=markers[1],
         label = "classifier", ms=5, lw=1, xticks=r,
         yticks = [0.85, 0.875, 0.9, 0.925, 0.95, 0.975, 1.0], color=colorvec[1],
-        legend=:bottomright, size=(400, 600),
-        xlabel="% of known labels", ylabel="accuracy", labelfontsize=10
+        legend=:bottomright, size=(400, 600), ylims=(0.83, 1),
+        xlabel="% of known labels", ylabel="accuracy", labelfontsize=10, kwargs...
     )
     p = plot!(r, table[6:10, :test_acc_mean], msc = :auto, m=markers[2], color=colorvec[2], label = "triplet classifier", ms=5, lw=1)
     p = plot!(r, table[11:15, :test_acc_mean], msc = :auto, m=markers[3], color=colorvec[3], label = "self-supervised classifier", ms=5, lw=1)
@@ -79,9 +82,9 @@ function plot_results(table; savename = nothing)
     if isnothing(savename)
         savefig("plot.png")
     else
-        wsave(plotsdir("gvma", "$savename.png"), p)
+        wsave(plotsdir("gvma", "$savename.svg"), p)
     end
     return p
 end
 
-# plot_results(results, savename="classifiers2")
+# plot_results(results, savename="gvma_acc")

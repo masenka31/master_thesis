@@ -1,6 +1,8 @@
 #!/bin/bash
 # This runs experiments
 
+SCRIPT=$1
+
 LOG_DIR="${HOME}/logs/masters/clustering"
 
 if [ ! -d "$LOG_DIR" ]; then
@@ -14,6 +16,6 @@ do
         # submit to slurm
         sbatch \
         --output="${LOG_DIR}/${modelname}_%A_%a.out" \
-        ./cluster.sh $modelname $ratios
+        ./${SCRIPT}.sh $modelname $ratios
     done
 done

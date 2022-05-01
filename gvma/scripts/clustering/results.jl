@@ -1,16 +1,16 @@
 using DrWatson
 @quickactivate
 
-using DataFrames, Flux, Mill, PDMats
+using gvma
+using DataFrames, Flux, Mill
 using PrettyTables
-using master_thesis
 using Distributions, ConditionalDists
 
 using Plots
 ENV["GKSwstype"] = "100"
 gr(;markerstrokewidth=0, label="", color=:jet)
 
-df = collect_results(datadir("experiments", "MIProblems", "clustering"), subfolders=true)
+df = collect_results(datadir("experiments", "gvma", "clustering"), subfolders=true)
 
 #####################################################
 ###                 Result tables                 ###
@@ -20,55 +20,30 @@ classifier = df[df.modelname .== "classifier", :]
 triplet = df[df.modelname .== "classifier_triplet", :]
 self = df[df.modelname .== "self_classifier", :]
 arcface = df[df.modelname .== "self_arcface", :]
-m2 = df[df.modelname .== "M2", :]
+gen = df[df.modelname .== "genmodel", :]
 
-modelnames = ["classifier", "classifier_triplet", "M2", "self_classifier", "self_arcface"]
-nice_modelnames = ["classifier", "classifier + triplet", "M2 model", "self-supervised classifier", "self-supervised ArcFace"]
+modelnames = ["classifier", "classifier_triplet", "self_classifier", "self_arcface", "genmodel"]
+models = ["classifier", "classifier_triplet", "self_classifier", "self_arcface", "genmodel"]
+nice_modelnames = ["classifier", "classifier + triplet", "self-supervised classifier", "self-supervised ArcFace", "M2 model"]
 
-# full results
+### with kNN
 res = DataFrame[]
 for m in modelnames
     d = df[df.modelname .== m, :].combined_df
     for row in d
         dfirst = first(sort(row, :accuracy, rev=true)) |> DataFrame
-        res = vcat(res, dfirst[:, [:modelname, :method, :type, :accuracy]])
-    end
-end
-res = vcat(res...)
-rvec = repeat([0.05, 0.1, 0.15, 0.2], 5)
-res.r = rvec .* 100
-sort!(res, :r)
-nicenames = repeat(nice_modelnames, 4)
-res.modelname = nicenames
-res.type[res.type .== "test_embedding"] .= "test embedding"
-res.type[res.type .== "train_embedding"] .= "train embedding"
-res.method[res.method .== "kmeans"] .= "k-means"
-res.method[res.method .== "kmedoids"] .= "k-medoids"
-res.method[res.method .== "hierarchical_average"] .= "hierarchical (average)"
-
-pretty_table(res, nosubheader=true, formatters = ft_round(3), hlines=[0,1,6,11,16,21], crop=:none)
-# this is the input table into master's thesis
-pretty_table(res, nosubheader=true, formatters = ft_round(3), hlines=[0,1,6,11,16,21], backend=:latex, tf = tf_latex_booktabs)
-
-### results without kNN and with other metrics calculated
-res = DataFrame[]
-for m in modelnames
-    d = df[df.modelname .== m, :].combined_df
-    for row in d
-        rowf = filter(:method => m -> m != "kNN", row)
-        dfirst = first(sort(rowf, :accuracy, rev=true)) |> DataFrame
-        res = vcat(res, dfirst[:, [:modelname, :method, :type, :accuracy, :randindex, :MI, :k]])
+        res = vcat(res, dfirst[:, [:modelname, :method, :type, :accuracy]])#, :new_randindex, :new_MI, :randindex, :MI]])
         # res = vcat(res, dfirst[:, [:modelname, :method, :type, :accuracy]])
     end
 end
 res = vcat(res...)
-rvec = repeat([0.05, 0.1, 0.15, 0.2], 5)
+rvec = repeat([0.01, 0.02, 0.05, 0.1, 0.2], 5)
 res.r = rvec .* 100
 sort!(res, :r)
-nicenames = repeat(nice_modelnames, 4)
+nicenames = repeat(nice_modelnames, 5)
 res.modelname = nicenames
-# res.type[res.type .== "test_embedding"] .= "test embedding"
-# res.type[res.type .== "train_embedding"] .= "train embedding"
+res.type[res.type .== "test_embedding"] .= "test embedding"
+res.type[res.type .== "train_embedding"] .= "train embedding"
 res.method[res.method .== "kmeans"] .= "k-means"
 res.method[res.method .== "kmedoids"] .= "k-medoids"
 res.method[res.method .== "hierarchical_average"] .= "hierarchical (average)"
@@ -77,33 +52,36 @@ pretty_table(res, nosubheader=true, formatters = ft_round(3), hlines=[0,1,6,11,1
 # this is the input table into master's thesis
 pretty_table(res, nosubheader=true, formatters = ft_round(3), hlines=[0,1,6,11,16,21,26], backend=:latex, tf = tf_latex_booktabs)
 
-# this is just for nice visualization
-for (r1, r2, r3, r4, r5) in zip(eachrow(classifier), eachrow(triplet), eachrow(self), eachrow(m2), eachrow(m2_warmup))
-    srt = sort(r1.combined_df, :accuracy, rev=true)
-    s1 = srt[1:1, [:modelname, :method, :type, :accuracy]]
-
-    srt = sort(r2.combined_df, :accuracy, rev=true)
-    s2 = srt[1:1, [:modelname, :method, :type, :accuracy]]
-
-    srt = sort(r3.combined_df, :accuracy, rev=true)
-    s3 = srt[1:1, [:modelname, :method, :type, :accuracy]]
-
-    srt = sort(r4.combined_df, :accuracy, rev=true)
-    s4 = srt[1:1, [:modelname, :method, :type, :accuracy]]
-
-    srt = sort(r5.combined_df, :accuracy, rev=true)
-    s5 = srt[1:1, [:modelname, :method, :type, :accuracy]]
-
-    pretty_table(vcat(s1, s2, s3, s4, s5), formatters = ft_round(3), nosubheader=true)
+### without kNN
+res = DataFrame[]
+for m in modelnames
+    d = df[df.modelname .== m, :].combined_df
+    for row in d
+        rowf = filter(:method => m -> m != "kNN", row)
+        dfirst = first(sort(rowf, :accuracy, rev=true)) |> DataFrame
+        res = vcat(res, dfirst[:, [:modelname, :method, :type, :accuracy, :randindex, :MI, :k]])
+    end
 end
+res = vcat(res...)
+rvec = repeat([0.01, 0.02, 0.05, 0.1, 0.2], 5)
+res.r = rvec .* 100
+sort!(res, :r)
+nicenames = repeat(nice_modelnames, 5)
+res.modelname = nicenames
+res.type[res.type .== "test_embedding"] .= "test embedding"
+res.type[res.type .== "train_embedding"] .= "train embedding"
+res.method[res.method .== "kmeans"] .= "k-means"
+res.method[res.method .== "kmedoids"] .= "k-medoids"
+res.method[res.method .== "hierarchical_average"] .= "hierarchical (average)"
+
+pretty_table(res, nosubheader=true, formatters = ft_round(3), hlines=[0,1,6,11,16,21,26], crop=:none)
+# this is the input table into master's thesis
+pretty_table(res, nosubheader=true, formatters = ft_round(3), hlines=[0,1,6,11,16,21,26], backend=:latex, tf = tf_latex_booktabs)
+
 
 ################################################
 ###                 Plotting                 ###
 ################################################
-
-using Plots
-gr(label="");
-ENV["GKSwstype"] = "100"
 
 d = classifier.combined_df[1]
 methods = ["kmeans", "kmedoids", "hierarchical_average", "kNN"]
@@ -112,7 +90,7 @@ methods = ["kmeans", "kmedoids", "hierarchical_average", "kNN"]
 const markers = [:circle, :square, :utriangle, :dtriangle, :diamond, :hexagon, :star4]
 const colorvec = [:blue4, :green4, :darkorange, :purple3, :red3, :grey, :sienna4, :cyan]
 
-function plot_clustering(d, x::Symbol, y::Symbol, knn=true; methods=methods, markers=markers, savename="plot", kwargs...)
+function plot_clustering(d, x::Symbol, y::Symbol, knn=true; methods=methods, markers=markers, savename="plot.png", kwargs...)
     mi = minimum(skipmissing(d[!, x]))
     ma = maximum(skipmissing(d[!, x]))
 
@@ -155,11 +133,17 @@ function plot_clustering(d, x::Symbol, y::Symbol, knn=true; methods=methods, mar
         p = plot!([mi, ma], [d[30, y], d[30, y]], color=colorvec[4], lw=2, ls=:dot)
     end
     # savefig("$savename.png")
-    savefig("$savename.svg")
+    savefig(savename)
     return p
 end
 
-# plot_clustering(d, :k, :accuracy, true, legend=:bottomright)
+# if I shaffen this, have these pictures there - for each model and dataset?
+# is it maybe too much?
+d = classifier.combined_df
+for i in 1:5
+    plot_clustering(d[i], :k, :accuracy, true, legend=:bottomright, savename="plot_$i.png", size=(400, 400), labelfontsize=10)
+end
+# plot_clustering(d, :k, :accuracy, true, legend=:bottomright, savename="plott.png")
 
 plot_comparison(:randindex, false)
 plot_comparison(:accuracy, true)
@@ -186,16 +170,10 @@ function plot_comparison(metric, knn)
                 legendtitle="$ri % labeled, $digits digits", legendtitlefontsize=9,
                 foreground_color_legend = nothing, legendfontsize=8
         )
-        # wsave(plotsdir("clustering", "MIProblems", "$metric", "plot_r=$(r).png"), p)
-        wsave(plotsdir("clustering", "MIProblems", "$metric", "plot_r=$(r).svg"), p)
+        # wsave(plotsdir("clustering", "gvma", "$metric", "plot_r=$(r).png"), p)
+        wsave(plotsdir("clustering", "gvma", "$metric", "plot_r=$(r).svg"), p)
     end
 end
-
-models = ["classifier", "classifier + triplet", "M2 model", "self-supervised classifier", "self-supervised ArcFace"]
-nice_modelnames = ["classifier", "classifier + triplet", "M2 model", "self-supervised classifier", "self-supervised ArcFace"]
-
-const markers = [:circle, :square, :utriangle, :diamond, :hexagon, :star4]
-const colorvec = [:blue4, :green4, :darkorange, :red3, :grey, :sienna4, :cyan]
 
 function plot_results(table; savename = nothing, kwargs...)
     mi = minimum(table.accuracy)
@@ -207,17 +185,45 @@ function plot_results(table; savename = nothing, kwargs...)
         kwargs...
     )
     for i in 1:length(nice_modelnames)
-        t = table[table.modelname .== models[i], :]
-        # @show t
+        t = table[table.modelname .== nice_modelnames[i], :]
+        @show t
         p = plot!(r, t.accuracy, msc = :auto, m=markers[i], label = nice_modelnames[i], ms=5, color=colorvec[i], lw=1.5)
     end
     if isnothing(savename)
         savefig("plot.png")
     else
-        # wsave(plotsdir("MIProblems", "$savename.png"), p)
-        wsave(plotsdir("MIProblems", "$savename.svg"), p)
+        # wsave(plotsdir("gvma", "$savename.png"), p)
+        wsave(plotsdir("gvma", "$savename.svg"), p)
     end
     return p
 end
 
-plot_results(res; savename = "cluster_accuracy", size=(400,450), ylims=(0.8035555555555554-0.01, 1.005))
+plot_results(
+    res, yticks = [0.85, 0.875, 0.9, 0.925, 0.95, 0.975, 1.0],
+    legend=:bottomright, ylims=(0.835, 1)
+)
+
+function plot_metric(table, metric::Symbol; savename = nothing, kwargs...)
+    mi = minimum(table[:, metric])
+    r = sort(unique(table.r))
+
+    p = plot(;
+        legend=:bottomright, ylims=(mi-0.01, 1.005), size=(400, 600), xticks=r,
+        xlabel="% of known labels", ylabel="RandIndex", labelfontsize=10,
+        kwargs...
+    )
+    for i in 1:length(nice_modelnames)
+        t = table[table.modelname .== nice_modelnames[i], :]
+        @show t
+        if !ismissing(t[:, metric])
+            p = plot!(r, t[:, metric], msc = :auto, m=markers[i], label = nice_modelnames[i], ms=5, color=colorvec[i], lw=1.5)
+        end
+    end
+    if isnothing(savename)
+        savefig("plot.png")
+    else
+        # wsave(plotsdir("gvma", "$savename.png"), p)
+        wsave(plotsdir("gvma", "$savename.svg"), p)
+    end
+    return p
+end

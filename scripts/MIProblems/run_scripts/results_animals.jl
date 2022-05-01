@@ -9,7 +9,7 @@ using PrettyTables
 using Plots
 ENV["GKSwstype"] = "100"
 
-function get_results(modelname, dataset; save=true)
+function get_results(modelname, dataset; save=false)
     # get the best model based on validation accuracy over 15 seeds
     if save
         df = collect_results!(datadir("experiments", "MIProblems", dataset, modelname), subfolders=true)

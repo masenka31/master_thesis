@@ -73,13 +73,13 @@ function calculate_chamfer(dataset, r, ratios, seed)
     safesave(datadir("experiments", "MIProblems", dataset, "chamfer_knn", "seed=$seed", nm), results)
 end
 
-dataset = "animals"
-for r in [0.05, 0.1, 0.15, 0.2]
-    for seed in 1:15
-        ratios = (r, 0.5-r, 0.5)
-        calculate_chamfer(dataset, r, ratios, seed)
-    end
-end
+# dataset = "animals"
+# for r in [0.05, 0.1, 0.15, 0.2]
+#     for seed in 1:15
+#         ratios = (r, 0.5-r, 0.5)
+#         calculate_chamfer(dataset, r, ratios, seed)
+#     end
+# end
 
 dataset = "animals_negative"
 for r in [0.05, 0.1, 0.15, 0.2]

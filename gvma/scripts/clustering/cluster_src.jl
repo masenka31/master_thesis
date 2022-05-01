@@ -237,6 +237,7 @@ function calculate_clustering_results(models, seeds, val_accs, test_accs, params
     results_over_seeds = DataFrame[]
 
     for (i, seed) in enumerate(seeds)
+        @info "Calculating seed $seed."
         # load data
         Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(X, y; ratios=ratios, seed=seed)
         classes = sort(unique(yk))

@@ -6,7 +6,7 @@
 """
 
 using Clustering, Distances
-using ProgressMeter
+# using ProgressMeter
 
 """
     map_clustering(enc_train, enc_test, ytrain, assign; metric=:mse)
@@ -31,6 +31,13 @@ function map_clustering(enc_train, enc_test, ytrain, assign)
     return ynew
 end
 
+"""
+    map_clustering_advanced(enc_train, enc_test, ytrain, assign, k=3)
+
+Takes encoding of train data, clusters it hierarchicaly into k clusters
+and calculates the means of the classes. For each cluster in test data,
+finds the closest mean of known data and assigns the cluster that label.
+"""
 function map_clustering_advanced(enc_train, enc_test, ytrain, assign, k=3)
     classes = sort(unique(ytrain))
 
@@ -61,67 +68,28 @@ function map_clustering_advanced(enc_train, enc_test, ytrain, assign, k=3)
 
     return ynew
 end
-# function map_clustering_advanced(enc_train, enc_test, ytrain, assign, k=3)
-#     classes = sort(unique(ytrain))
-
-#     means = []
-#     labels = []
-#     for c in classes
-#         e = enc_train[:, ytrain .== c]
-#         d = pairwise(Euclidean(), e)
-#         h = hclust(d, linkage=:average)
-#         yn = cutree(h, k=k)
-#         un = countmap(yn)
-#         fkeys = filter(key -> un[key] > 3, keys(un))
-#         b = map(x -> any(x .== fkeys), yn)
-
-#         fenc = e[:, b]
-#         ynnew = yn[b]
-#         m = map(i -> mean(fenc[:, ynnew .== i], dims=2), collect(fkeys))
-#         push!(means, m)
-#         push!(labels, repeat([c], k))
-#     end
-
-#     means = vcat(means...)
-#     labels = vcat(labels...)
-
-#     ynew = similar(assign)
-
-#     for i in sort(unique(assign))
-#         x = enc_test[:, assign .== i]
-#         m = mean(x, dims=2)
-#         min_ix = findmin(x -> Flux.mse(m, x), means)[2]
-#         ynew[assign .== i] .= labels[min_ix]
-#     end
-
-#     return ynew
-# end
 
 # what about for hierarchical clustering?
 hierarchical_single(DM, k) = cutree(hclust(DM, linkage=:single), k=k)
 hierarchical_average(DM, k) = cutree(hclust(DM, linkage=:average), k=k)
 
 # clustering accuracy
-accuracy(y1, y2) = mean(y1 .== y2)
+accuracy(y1::AbstractVector, y2::AbstractVector) = mean(y1 .== y2)
 
-function cluster(DM::AbstractMatrix, y::AbstractVector, clusterfun, k; iter=5)
-    # max_silh = 0
-    # cbest = ClusteringResult
+"""
+    cluster(DM::AbstractMatrix, y::AbstractVector, clusterfun, k::Int)
 
-    # if clusterfun in [kmedoids, kmeans]
-    #     @showprogress "Clustering with $k clusters\n:" for i in 1:iter
-    #         c = clusterfun(DM, k)
-    #         m = mean(silhouettes(c, DM))
-    #         if m > max_silh
-    #             cbest = c
-    #             max_silh = m
-    #         end
-    #     end
-    # else
-    #     cbest = clusterfun(DM, k)
-    #     max_silh = mean(silhouettes(cbest, DM))
-    # end
-    
+Clusters data from given distance matrix and calculates mean silhouette values, RandIndex,
+adjusted RandIndex and Mutual information based on true labels `y`.
+
+Returns a DataFrame with method used, k, and the calculated metrics.
+
+The `clusterfun` provided can be
+- `kmeans`
+- `kmedoids`
+- `hierarchical_average`
+"""
+function cluster(DM::AbstractMatrix, y::AbstractVector, clusterfun, k::Int)
     cbest = clusterfun(DM, k)
     max_silh = mean(silhouettes(cbest, DM))
     ri = randindex(y, cbest)
@@ -135,11 +103,19 @@ function cluster(DM::AbstractMatrix, y::AbstractVector, clusterfun, k; iter=5)
         :silh => max_silh
     ), cbest
 end
-function cluster(enc, enc_test, y, yt, clusterfun, k, seed; advanced=true, type="", iter=5)
+
+"""
+    cluster(enc, enc_test, y, yt, clusterfun, k, seed; advanced=true, type="")
+    cluster(enc, enc_test, DM, y, yt, clusterfun, k, seed; advanced=true, type="")
+
+Clusters data and assigns the clusters labels from the known classes.
+Returns a dataframe of calculated metrics.
+"""
+function cluster(enc, enc_test, y, yt, clusterfun, k, seed; advanced=true, type="")
     advanced ? mapfun = map_clustering_advanced : mapfun = map_clustering
 
     DM = pairwise(Euclidean(), enc_test)
-    df, c = cluster(DM, yt, clusterfun, k; iter=iter)
+    df, c = cluster(DM, yt, clusterfun, k)
     if clusterfun in [kmedoids, kmeans]
         ynew = mapfun(enc, enc_test, y, assignments(c))
     else
@@ -156,10 +132,10 @@ function cluster(enc, enc_test, y, yt, clusterfun, k, seed; advanced=true, type=
     )
     return hcat(df, da), ynew, c
 end
-function cluster(enc, enc_test, DM, y, yt, clusterfun, k, seed; advanced=true, type="", iter=5)
+function cluster(enc, enc_test, DM, y, yt, clusterfun, k, seed; advanced=true, type="")
     advanced ? mapfun = map_clustering_advanced : mapfun = map_clustering
     
-    df, c = cluster(DM, yt, clusterfun, k; iter=iter)
+    df, c = cluster(DM, yt, clusterfun, k)
     if clusterfun in [kmedoids, kmeans]
         ynew = mapfun(enc, enc_test, y, assignments(c))
     else
@@ -178,18 +154,19 @@ function cluster(enc, enc_test, DM, y, yt, clusterfun, k, seed; advanced=true, t
 end
 
 # plotting functions
+const colorvec = [:blue4, :green4, :darkorange, :purple3, :red3, :grey, :sienna4, :cyan, :chartreuse, :orchid1]
 function plot_wrt_labels(X, y, classes; kwargs...)
     p = plot()
     for (i, c) in enumerate(classes)
         x = X[:, y .== c]
-        p = scatter2!(x, color=i, label=c; kwargs...)
+        p = scatter2!(x, color=colorvec[i], label=c; kwargs...)
     end
     return p
 end
 function plot_wrt_labels!(p, X, y, classes; kwargs...)
     for (i, c) in enumerate(classes)
         x = X[:, y .== c]
-        p = scatter2!(x, color=i, label=c; kwargs...)
+        p = scatter2!(x, color=colorvec[i], label=c; kwargs...)
     end
     return p
 end
@@ -213,6 +190,22 @@ function load_models(par, modelname, r, full, max_seed)
     modelpathf(seed) = datadir("experiments", "MNIST", modelname, "seed=$seed")
     files = mapreduce(seed -> readdir(modelpathf(seed)), vcat, 1:max_seed)
     ixs = findall(f -> (occursin(nm, f) && occursin("r=$r", f) && occursin("full=$full", f)), files)
+
+    files = sort!(files[ixs])
+    loaded_files = map((f, i) -> BSON.load(joinpath(modelpathf(i), f)), files, 1:max_seed)
+    models = map(i -> loaded_files[i][:model], 1:max_seed)
+    val_accs = map(i -> loaded_files[i][:val_acc], 1:max_seed)
+    test_accs = map(i -> loaded_files[i][:test_acc], 1:max_seed)
+    seeds = map(i -> loaded_files[i][:seed], 1:max_seed)
+    
+    return models, seeds, val_accs, test_accs, d.parameters
+end
+function load_models_arcface(par, modelname, r, full, max_seed)
+    d = filter(:r => ri -> ri == r, filter(:full => fi -> fi == full, par[modelname]))
+    nm = savename(d.parameters[1])
+    modelpathf(seed) = datadir("experiments", "MNIST", modelname, "seed=$seed")
+    files = mapreduce(seed -> readdir(modelpathf(seed)), vcat, 1:max_seed)
+    ixs = findall(f -> (occursin(nm, f) && occursin("r=$r", f)), files)
 
     files = sort!(files[ixs])
     loaded_files = map((f, i) -> BSON.load(joinpath(modelpathf(i), f)), files, 1:max_seed)

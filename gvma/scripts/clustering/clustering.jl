@@ -21,7 +21,7 @@ par = Dict(
 function embeddingfun(modelname, model)
     if modelname in ["classifier", "classifier_triplet", "self_classifier"]
         return x -> model[1](x)
-    elseif modelname == "M2"
+    elseif modelname == "genmodel"
         return x -> model.bagmodel(x)
     elseif modelname == "self_arcface"
         return x -> model(x)
@@ -33,11 +33,13 @@ r = parse(Float64, ARGS[2])
 ratios = (r, 0.5-r, 0.5)
 models, seeds, val_accs, test_accs, params = load_models(par, modelname, r);
 
-for r in [0.02, 0.05, 0.1, 0.2] #[0.01, 0.02, 0.05, 0.1, 0.2]
+Xf = X[:behavior_summary]
+
+for r in [0.01, 0.02, 0.05, 0.1, 0.2] #[0.01, 0.02, 0.05, 0.1, 0.2]
     @info "Calculating clustering for r=$r for $modelname."
     ratios = (r, 0.5-r, 0.5)
     models, seeds, val_accs, test_accs, params = load_models(par, modelname, r);
-    R = calculate_clustering_results(models, seeds, val_accs, test_accs, params, X, y, ratios, modelname, r)
+    R = calculate_clustering_results(models, seeds, val_accs, test_accs, params, Xf, y, ratios, modelname, r)
 
     rdf = vcat(R...)
     rdf = hcat(DataFrame(:modelname => repeat([modelname], nrow(rdf))), rdf)
@@ -63,4 +65,5 @@ for r in [0.02, 0.05, 0.1, 0.2] #[0.01, 0.02, 0.05, 0.1, 0.2]
     )
 
     safesave(datadir("experiments", "gvma", "clustering", modelname, savename(results_dict, "bson")), results_dict)
+    @info "Results for ratio $r saved."
 end
