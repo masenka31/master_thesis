@@ -52,3 +52,72 @@ function load_mill_data(dataset::String; normalize=true)
 	# return normal and anomalous bags
 	(normal = BagNode(ArrayNode(x[:,obs_inds0]), bags0), anomaly = BagNode(ArrayNode(x[:,obs_inds1]), bags1),)
 end
+
+function load_animals()
+    fox = load_mill_data("Fox").normal
+    elephant = load_mill_data("Elephant").normal
+    tiger = load_mill_data("Tiger").normal
+
+    yf = repeat(["Fox"], nobs(fox))
+    ye = repeat(["Elephant"], nobs(elephant))
+    yt = repeat(["Tiger"], nobs(tiger))
+
+    return cat(fox, elephant, tiger), vcat(yf, ye, yt)
+end
+
+function animals_negative()
+    fox = load_mill_data("Fox").normal
+    elephant = load_mill_data("Elephant").normal
+    tiger = load_mill_data("Tiger").normal
+
+    yf = repeat(["Fox"], nobs(fox))
+    ye = repeat(["Elephant"], nobs(elephant))
+    yt = repeat(["Tiger"], nobs(tiger))
+
+    return cat(fox, elephant, tiger), vcat(yf, ye, yt)
+end
+function animals_positive()
+    fox = load_mill_data("Fox").anomaly
+    elephant = load_mill_data("Elephant").anomaly
+    tiger = load_mill_data("Tiger").anomaly
+
+    yf = repeat(["Fox"], nobs(fox))
+    ye = repeat(["Elephant"], nobs(elephant))
+    yt = repeat(["Tiger"], nobs(tiger))
+
+    return cat(fox, elephant, tiger), vcat(yf, ye, yt)
+end
+
+using BSON
+function load_corel()
+	corel = BSON.load(datadir("corel_mill.bson"))
+	@unpack labels, X, bagids = corel
+	
+	# add to bagnodes
+	_data = BagNode(ArrayNode(X), bagids)
+	
+	# create bag labels
+	_y = []
+	labelnames = unique(labels)
+	for i in 1:2000
+		bl = labels[bagids .== i]
+		# check that the labels are unique
+		if length(unique(bl)) > 1
+			@warn "Labels are not the same!"
+		end
+		push!(_y, bl[1])
+	end
+
+	return _data, _y
+end
+
+function load_multiclass(dataset="animals")
+	if dataset == "animals"
+		data, labels = load_animals()
+	elseif dataset == "animals_negative"
+		data, labels = animals_negative()
+	elseif dataset == "corel"
+		data, labels = load_corel()
+	end
+	return data, labels
+end

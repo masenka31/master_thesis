@@ -1,0 +1,12 @@
+#!/bin/bash
+#SBATCH --time=4:00:00
+#SBATCH --partition=cpufast
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=24G
+
+RATIOS=$1
+DATASET=$2
+
+module load Julia/1.6.4-linux-x86_64
+
+julia --threads 3 self_arcface.jl $RATIOS $DATASET

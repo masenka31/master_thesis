@@ -8,21 +8,10 @@ using Distances
 include(srcdir("point_cloud.jl"))
 include(srcdir("mill_data.jl"))
 
-function load_animals()
-    fox = load_mill_data("Fox").normal
-    elephant = load_mill_data("Elephant").normal
-    tiger = load_mill_data("Tiger").normal
-
-    yf = repeat(["Fox"], nobs(fox))
-    ye = repeat(["Elephant"], nobs(elephant))
-    yt = repeat(["Tiger"], nobs(tiger))
-
-    return cat(fox, elephant, tiger), vcat(yf, ye, yt)
-end
-
 data, labels = load_animals()
+data, labels = animals_positive()
 
-r = 0.05
+r = 0.1
 ratios = (r, 0.5-r, 0.5)
 Xk, yk, Xu, yu, Xt, yt = split_semisupervised_balanced(data, labels; ratios=ratios, seed=1)
 
@@ -39,16 +28,17 @@ ytrain = yk
 yoh_train = Flux.onehotbatch(ytrain, classes)
 hdim = 64   # hidden dimension
 ldim = 16   # latent dimension
+activation = tanh
 
 # create a simple classificator model
 mill_model = reflectinmodel(
     Xtrain,
-    d -> Dense(d, hdim, swish),
+    d -> Dense(d, hdim, activation),
     SegmentedMeanMax
 )
 model = Chain(
         mill_model, Mill.data,
-        Dense(hdim, hdim, swish), Dense(hdim, hdim, swish),
+        Dense(hdim, hdim, activation), Dense(hdim, hdim, activation),
         Dense(hdim, ldim), Dense(ldim, n)
 )
 
@@ -119,12 +109,12 @@ ldim = 8    # latent dimension
 # create a simple classificator model
 mill_model_triplet = reflectinmodel(
     Xtrain,
-    d -> Dense(d, hdim, swish),
+    d -> Dense(d, hdim, activation),
     SegmentedMeanMax
 )
 model_triplet = Chain(
         mill_model_triplet, Mill.data,
-        Dense(hdim, hdim, swish), Dense(hdim, hdim, swish),
+        Dense(hdim, hdim, activation), Dense(hdim, hdim, activation),
         Dense(hdim, ldim), Dense(ldim, n)
 )
 

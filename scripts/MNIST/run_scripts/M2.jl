@@ -2,19 +2,15 @@ using DrWatson
 @quickactivate
 using master_thesis
 using master_thesis.Models
+using master_thesis: reindex, seqids2bags, encode
+
 using Distributions, DistributionsAD
 using ConditionalDists
-using Flux
+using Flux, Mill
 
 using StatsBase, Random
 using LinearAlgebra
 using Distances
-using Base.Iterators: repeated
-
-using Mill
-
-using master_thesis: reindex, seqids2bags, encode
-using master_thesis.Models: chamfer_score
 
 include(srcdir("point_cloud.jl"))
 
@@ -25,53 +21,35 @@ full = parse(Bool, ARGS[2])
 # for now, just testing
 # seed = 1
 
-# check that the combination does not yet exist
-function check_params(savepath, parameters)
-    s = readdir(savepath)
-    cap = map(si -> match(r"known_acc=[0-9\.]*_seed=[0-9]_(.*)\.bson", si).captures[1], s)
-    n = savename(parameters)
-    any(cap .== n) ? (return false) : (return true)
-end
-
-
 # sample model parameters
 function sample_params()
-    hdim = sample([16,32,64])           # hidden dimension
-    zdim = sample([2,4,8,16])           # latent dimension
-    bdim = sample([2,4,8,16])           # the dimension ob output of the HMill model
+    hdim = sample([16,32,64])              # hidden dimension
+    zdim = sample([2,4,8,16,32])           # latent dimension
+    bdim = sample([2,4,8,16,32])           # the dimension ob output of the HMill model
     batchsize = sample([64, 128, 256])
-    agg = sample([SegmentedMean, SegmentedMax, SegmentedMeanMax])   # HMill aggregation function
-    activation = sample(["swish", "relu", "tanh"])                  # activation function
-    type = sample([:vanilla, :dense, :simple])
-    α = sample([0.1f0, 0.05f0, 0.01f0])
+    agg = sample(["SegmentedMean", "SegmentedMax", "SegmentedMeanMax"])   # HMill aggregation function
+    activation = sample(["swish", "relu", "tanh"])                        # activation function
+    type = sample([:vanilla, :dense])
+    α = sample([0.1f0, 1f0, 10f0])
+    while zdim > hdim
+        zdim = sample([2,4,8,16,32])
+    end
+    while bdim > hdim
+        bdim = sample([2,4,8,16,32])
+    end
     return parameters = (hdim = hdim, zdim = zdim, bdim = bdim, batchsize = batchsize, aggregation = agg, activation = activation, type = type, α = α)
 end
 
-# function to get validation data and return new unknown data
-function validation_data(yk, Xu, yu, seed, classes)
-    # set seed
-    (seed == nothing) ? nothing : Random.seed!(seed)
-
-    c = length(classes)
-    n = round(Int, length(yk) / c)
-    N = length(yu)
-
-    ik = []
-    for i in 1:c
-        avail_ix = (1:N)[yu .== classes[i]]
-        ix = sample(avail_ix, n)
-        push!(ik, ix)
-    end
-    ik = shuffle(vcat(ik...))
-    ileft = setdiff(1:N, ik)
-
-    x, y = reindex(Xu, ik), yu[ik]
-    new_xu, new_yu = reindex(Xu, ileft), yu[ileft]
-
-    # reset seed
-	(seed !== nothing) ? Random.seed!() : nothing
-
-    return x, y, new_xu, new_yu
+# check that the combination does not yet exist
+function check_params(checkpath, parameters, r, fl)
+    files = readdir(checkpath)
+    n = savename(parameters)
+    b_par = map(f -> occursin(n, f), files)
+    b_r = map(f -> occursin("r=$r", f), files)
+    b_f = map(f -> occursin("full=$fl", f), files)
+    b = b_par .* b_r .* b_f
+    # any(b) ? (return false) : (return true)
+    any(b) ? false : true
 end
 
 # load MNIST data
@@ -79,17 +57,13 @@ data = load_mnist_point_cloud()
 
 # training time
 if full
-    max_train_time = 60*60*5
+    max_train_time = 60*60*6
 else
     max_train_time = 60*60*4
 end
 
 function train_and_save(data, parameters, seed, ratios, full, max_train_time)
     @info "Starting loop for seed no. $seed."
-
-    # model parameters
-    # hdim, zdim, bdim, batchsize, agg, activation, type, α = pvec
-    # parameters = (hdim = hdim, zdim = zdim, bdim = bdim, batchsize = batchsize, aggregation = agg, activation = activation, type = type, α = α)
 
     # split dataset
     if full
@@ -114,7 +88,7 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
     model = M2_bag_constructor(Xk, c; parameters...)
 
     function accuracy(model::M2BagModel, X, y, classes)
-        ynew = Flux.onecold(model.bagmodel(X), classes)
+        ynew = Flux.onecold(condition(model.qy_x, model.bagmodel(X)).α, classes)
         mean(ynew .== y)
     end
     accuracy(X, y) = accuracy(model, X, y, classes)
@@ -163,16 +137,18 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
     # optimizer and training parameters
     opt = ADAM()
     ps = Flux.params(model)
-    global max_accuracy = 0
-    global best_model = deepcopy(model)
-    @info "Best model = $best_model."
+    best_acc_train = 0
+    best_acc_val = 0
+    best_model = deepcopy(model)
+    patience = 0
+    max_patience = 200
 
     @info "Starting training with parameters $(parameters)..."
+    
     start_time = time()
-
     while time() - start_time < max_train_time
 
-        b = map(i -> minibatch(), 1:5)
+        b = map(i -> minibatch(), 1:2)
         Flux.train!(lossf, ps, b, opt)
 
         if isnan(lossf(minibatch()...))
@@ -180,22 +156,25 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
             break
         end
 
-        # @show accuracy(Xt, yt)
-        @show accuracy(Xk, yk)
-        @show a = accuracy(Xval, yval)
-        if a >= max_accuracy
-            global max_accuracy = a
-            global best_model = deepcopy(model)
+        @show at = accuracy(Xk, yk)
+        @show av = accuracy(Xval, yval)
+        if (av >= best_acc_val) && (at >= best_acc_train)
+            best_acc_train = at
+            best_acc_val = av
+            best_model = deepcopy(model)
+            patience = 0
+        else
+            patience += 1
+            if patience > max_patience
+                @info "Patience exceeded, stopped trainig."
+                break
+            end
         end
     end
 
-    @info "Max accuracy = $max_accuracy."
-    @info "Best model = $best_model."
+    @info "Training finished."
 
-    # predict_label(X) = Flux.onecold(model.bagmodel(X), classes)
-    predict_label(X) = Flux.onecold(best_model.bagmodel(X), classes)
-
-    # cm, df = confusion_matrix(classes, Xk, yk, predict_label)
+    predict_label(X) = Flux.onecold(condition(best_model.qy_x, best_model.bagmodel(X)).α, classes)
     cm, df = confusion_matrix(classes, Xt, yt, predict_label)
 
     # accuracy of the best model
@@ -205,46 +184,38 @@ function train_and_save(data, parameters, seed, ratios, full, max_train_time)
     at = best_accuracy(Xt, yt)
     aval = best_accuracy(Xval, yval)
 
-    # chamfer score
-    chamfer_label(X) = chamfer_score(best_model, X, classes)
-    chamfer_label2(X) = map(i -> chamfer_label(X[i]), 1:nobs(X))
-    chamfer_accuracy(X, y) = mean(chamfer_label2(X) .== y)
-    chk = mean(i -> chamfer_accuracy(Xk, yk), 1:10)
-    ch_val = mean(i -> chamfer_accuracy(Xval, yval), 1:10)
-    ch_test = mean(i -> chamfer_accuracy(reindex(Xt, 1:1000), yt[1:1000]), 1:10)
-
     @info "Results calculated."
-
-    n = savename("known_acc=$(round(max_accuracy, digits=3))_seed=$seed", parameters, "bson")
+    
     results = Dict(
         :parameters => parameters,
         :seed => seed,
         :full => full,
         :r => r,
-        :known_acc => ak,
+        :train_acc => ak,
         :unknown_acc => au,
         :val_acc => aval,
         :test_acc => at,
-        :chamfer_known => chk,
-        :chamfer_val => ch_val,
-        :chamfer_test => ch_test,
         :CM => (cm, df),
         :modelname => "M2",
         :model => best_model,
     )
 
-    safesave(datadir("experiments", "MNIST", "M2", n), results)
+    n = savename(savename(parameters), results, "bson")
+    safesave(datadir("experiments", "MNIST", "M2", "seed=$seed", n), results)
     @info "Results for seed no. $seed saved."
 end
 
-savepath = datadir("experiments", "MNIST", "M2")
-ispath(savepath) ? nothing : mkdir(savepath)
+checkpath = datadir("experiments", "MNIST", "M2", "seed=1")
+mkpath(checkpath)
 
-# for k in 1:500
+for k in 1:100
     parameters = sample_params()
-    # if check_params(savepath, parameters)
-        for seed in 1:5
+    if check_params(checkpath, parameters, r, full)
+        Threads.@threads for seed in 1:5
             train_and_save(data, parameters, seed, ratios, full, max_train_time)
         end
-    # end
-# end
+        break
+    else
+        @info "Parameters already used, trying new ones..."
+    end
+end

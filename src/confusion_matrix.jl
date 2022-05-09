@@ -8,14 +8,9 @@ to get label predictions.
 
 Returns the confusion matrix as well as a dataframe with accuracy per class.
 """
-function confusion_matrix(classes, X, y, predict_labels)
-    # get the predicted labels - example
-    # function predict_labels(X)
-    #     r = probs(condition(qy_x, bagmodel(X)))
-    #     ynew = classes[Flux.onecold(r)]
-    # end
-
-    ynew = predict_labels(X)
+confusion_matrix(classes, X, y, predict_labels::Function) = confusion_matrix(classes, y, predict_labels(X))
+function confusion_matrix(classes, y, ynew::Vector)
+    # ynew = predict_labels(X)
 
     # calculate the confusion matrix
     n = length(classes)

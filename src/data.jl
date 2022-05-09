@@ -54,13 +54,14 @@ end
 
 A faster implementation of Base.getindex.
 """
-function reindex(bagnode, inds)
+function reindex(bagnode::BagNode, inds)
 	obs_inds = bagnode.bags[inds]
 	new_bagids = vcat(map(x->repeat([x[1]], length(x[2])), enumerate(obs_inds))...)
 	data = bagnode.data.data[:,vcat(obs_inds...)]
 	new_bags = seqids2bags(new_bagids)
 	BagNode(ArrayNode(data), new_bags)
 end
+reindex(bagnode::ProductNode, inds) = bagnode[inds]
 
 function split_semisupervised(X::AbstractMillNode, y::Vector; ratios=(0.3,0.3,0.4), seed=nothing)
     
@@ -80,6 +81,11 @@ function split_semisupervised(X::AbstractMillNode, y::Vector; ratios=(0.3,0.3,0.
     return Xk, yk, Xu, yu, Xt, yt
 end
 
+"""
+    split_semisupervised_balanced(X::AbstractMillNode, y::Vector; ratios=(0.3,0.3,0.4), seed=nothing)
+
+Splits data based on given ratios = (labeled, unlabeled, test).
+"""
 function split_semisupervised_balanced(X::AbstractMillNode, y::Vector; ratios=(0.3,0.3,0.4), seed=nothing)
     
     # set seed
@@ -97,7 +103,7 @@ function split_semisupervised_balanced(X::AbstractMillNode, y::Vector; ratios=(0
     ik = []
     for i in 1:c
         avail_ix = (1:n)[y .== un[i]]
-        ix = sample(avail_ix, r)
+        ix = sample(avail_ix, r, replace=false)
         push!(ik, ix)
     end
     ik = shuffle(vcat(ik...))
@@ -116,4 +122,46 @@ function split_semisupervised_balanced(X::AbstractMillNode, y::Vector; ratios=(0
 	(seed !== nothing) ? Random.seed!() : nothing
 
     return Xk, yk, Xu, yu, Xt, yt
+end
+
+function validation_catch(avail_ix, n, seed)
+    try
+        (seed == nothing) ? nothing : Random.seed!(seed)
+        return sample(avail_ix, n, replace=false)
+        (seed !== nothing) ? Random.seed!() : nothing
+    catch e
+        return sample(avail_ix, length(avail_ix), replace=false)
+    end
+end
+
+"""
+    validation_data(yk, Xu, yu, seed, classes)
+
+Takes `length(yk)` number of samples from unlabeled dataset
+as validation dataset.
+"""
+function validation_data(yk, Xu, yu, seed, classes)
+    # set seed
+    (seed == nothing) ? nothing : Random.seed!(seed)
+
+    c = length(classes)
+    n = round(Int, length(yk) / c)
+    N = length(yu)
+
+    ik = []
+    for i in 1:c
+        avail_ix = (1:N)[yu .== classes[i]]
+        ix = validation_catch(avail_ix, n, seed)
+        push!(ik, ix)
+    end
+    ik = shuffle(vcat(ik...))
+    ileft = setdiff(1:N, ik)
+
+    x, y = reindex(Xu, ik), yu[ik]
+    new_xu, new_yu = reindex(Xu, ileft), yu[ileft]
+
+    # reset seed
+	(seed !== nothing) ? Random.seed!() : nothing
+
+    return x, y, new_xu, new_yu
 end
